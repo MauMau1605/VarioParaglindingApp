@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.vario.app.VarioAudioEngineTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-09-16T18:25:12" hostname="DESKTOP-7HDHHBS" time="0.568">
+  <properties/>
+  <testcase name="deadband_fillsBufferWithPureSilence" classname="com.vario.app.VarioAudioEngineTest" time="0.137"/>
+  <testcase name="synthesisLoop_zeroAllocationsAcross10000Cycles" classname="com.vario.app.VarioAudioEngineTest" time="0.414"/>
+  <testcase name="currentVz_volatilePropertyUpdatesCleanly" classname="com.vario.app.VarioAudioEngineTest" time="0.001"/>
+  <testcase name="sinkTone_generatesContinuousToneWithoutDutyCycleHoles" classname="com.vario.app.VarioAudioEngineTest" time="0.001"/>
+  <testcase name="climbTone_generatesValidPcmAndAlternatingSilence" classname="com.vario.app.VarioAudioEngineTest" time="0.014"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

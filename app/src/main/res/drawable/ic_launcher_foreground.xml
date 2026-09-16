@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108"
+    android:tint="#00E676">
+    <!-- Upward arrow / variometer symbol -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,20 L80,60 L65,60 L65,88 L43,88 L43,60 L28,60 Z" />
+</vector>

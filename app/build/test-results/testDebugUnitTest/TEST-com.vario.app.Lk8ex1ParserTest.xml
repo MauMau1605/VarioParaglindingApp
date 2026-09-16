@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.vario.app.Lk8ex1ParserTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-09-16T18:25:12" hostname="DESKTOP-7HDHHBS" time="0.121">
+  <properties/>
+  <testcase name="parseNegativeVario_extractsSignedValue" classname="com.vario.app.Lk8ex1ParserTest" time="0.011"/>
+  <testcase name="parseFragmentedPackets_reconstructsSentence" classname="com.vario.app.Lk8ex1ParserTest" time="0.001"/>
+  <testcase name="ignoresGarbageBeforeDollar" classname="com.vario.app.Lk8ex1ParserTest" time="0.006"/>
+  <testcase name="parseNominalSentence_extractsCorrectValues" classname="com.vario.app.Lk8ex1ParserTest" time="0.002"/>
+  <testcase name="parseMultipleSentencesConsecutively" classname="com.vario.app.Lk8ex1ParserTest" time="0.002"/>
+  <testcase name="parsingLoop_zeroAllocationsAcross10000Packets" classname="com.vario.app.Lk8ex1ParserTest" time="0.088"/>
+  <testcase name="parseByteByByte_handlesStreamCorrectly" classname="com.vario.app.Lk8ex1ParserTest" time="0.001"/>
+  <testcase name="resetAbortsCurrentSentence" classname="com.vario.app.Lk8ex1ParserTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

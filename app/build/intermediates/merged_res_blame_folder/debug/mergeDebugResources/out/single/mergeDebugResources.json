@@ -1,0 +1,14 @@
+[
+    {
+        "merged": "C:\\Users\\Maurice\\.gradle\\daemon\\8.7\\com.vario.app-debug-44:\\xml_device_filter.xml.flat",
+        "source": "C:\\Users\\Maurice\\.gradle\\daemon\\8.7\\com.vario.app-main-46:\\xml\\device_filter.xml"
+    },
+    {
+        "merged": "com.vario.app-debug-44:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.vario.app-main-46:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "C:\\Users\\Maurice\\.gradle\\daemon\\8.7\\com.vario.app-debug-44:\\drawable_ic_launcher_foreground.xml.flat",
+        "source": "C:\\Users\\Maurice\\.gradle\\daemon\\8.7\\com.vario.app-main-46:\\drawable\\ic_launcher_foreground.xml"
+    }
+]

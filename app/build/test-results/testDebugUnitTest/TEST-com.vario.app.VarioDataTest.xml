@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.vario.app.VarioDataTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-16T18:25:12" hostname="DESKTOP-7HDHHBS" time="0.006">
+  <properties/>
+  <testcase name="defaultConstructor_hasZeroValues" classname="com.vario.app.VarioDataTest" time="0.005"/>
+  <testcase name="customConstructor_holdsGivenValues" classname="com.vario.app.VarioDataTest" time="0.001"/>
+  <testcase name="copy_createsIndependentInstance" classname="com.vario.app.VarioDataTest" time="0.0"/>
+  <testcase name="equalsAndHashCode_behaveCorrectly" classname="com.vario.app.VarioDataTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

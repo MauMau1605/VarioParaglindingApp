@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VarioAppli — Hardware & Audio Simulator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0a0b10;
+            --panel-bg: rgba(26, 28, 38, 0.85);
+            --panel-border: rgba(255, 255, 255, 0.1);
+            --phone-bg: #0D0D0D;
+            --climb-color: #00E676;
+            --sink-color: #FF5252;
+            --neutral-color: #B0BEC5;
+            --text-muted: #757575;
+            --accent-blue: #2979FF;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: radial-gradient(circle at 50% 20%, #151828 0%, #08090f 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px;
+            overflow-x: hidden;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        header h1 {
+            font-size: 26px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #00E676, #00B0FF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        header p {
+            font-size: 13px;
+            color: #8E99A8;
+            margin-top: 4px;
+        }
+
+        .main-container {
+            display: flex;
+            flex-direction: row;
+            gap: 32px;
+            max-width: 1100px;
+            width: 100%;
+            justify-content: center;
+            align-items: stretch;
+            flex-wrap: wrap;
+        }
+
+        /* ── Phone Frame ──────────────────────────────────────────────────────── */
+        .phone-wrapper {
+            position: relative;
+            width: 360px;
+            height: 740px;
+            background: #1e1e24;
+            border-radius: 48px;
+            padding: 12px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7),
+                        0 0 0 1px rgba(255, 255, 255, 0.15),
+                        inset 0 0 0 2px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .phone-screen {
+            background-color: var(--phone-bg);
+            border-radius: 38px;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .phone-notch {
+            width: 120px;
+            height: 22px;
+            background: #1e1e24;
+            border-bottom-left-radius: 14px;
+            border-bottom-right-radius: 14px;
+            margin: 0 auto;
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+
+        .phone-status-bar {
+            height: 38px;
+            padding: 6px 20px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.6);
+            z-index: 5;
+        }
+
+        .phone-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            text-align: center;
+        }
+
+        /* Exact VarioScreen Match */
+        .vario-label {
+            font-size: 16px;
+            font-weight: 300;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .vario-vz-val {
+            font-size: 88px;
+            font-weight: 900;
+            color: var(--neutral-color);
+            line-height: 1.0;
+            margin: 6px 0 2px;
+            transition: color 0.15s ease;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .vario-unit {
+            font-size: 18px;
+            font-weight: 300;
+            color: var(--text-muted);
+        }
+
+        .vario-spacer {
+            height: 36px;
+        }
+
+        .vario-alt-val {
+            font-size: 46px;
+            font-weight: 600;
+            color: #FFFFFF;
+            line-height: 1.1;
+            margin: 4px 0 2px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .vario-buttons {
+            display: flex;
+            gap: 16px;
+            margin-top: 48px;
+        }
+
+        .btn-vario {
+            border: none;
+            padding: 12px 28px;
+            border-radius: 24px;
+            font-weight: 800;
+            font-size: 14px;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.2s, opacity 0.2s;
+            outline: none;
+        }
+
+        .btn-vario:active {
+            transform: scale(0.95);
+        }
+
+        .btn-start {
+            background-color: var(--climb-color);
+            color: #000;
+            box-shadow: 0 4px 18px rgba(0, 230, 118, 0.35);
+        }
+
+        .btn-stop {
+            background-color: var(--sink-color);
+            color: #FFF;
+            box-shadow: 0 4px 18px rgba(255, 82, 82, 0.35);
+        }
+
+        .service-badge {
+            position: absolute;
+            bottom: 16px;
+            font-size: 11px;
+            color: #555;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #444;
+        }
+
+        .badge-dot.active {
+            background: var(--climb-color);
+            box-shadow: 0 0 10px var(--climb-color);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ── Control / Simulation Panel ───────────────────────────────────────── */
+        .controls-panel {
+            flex: 1;
+            min-width: 380px;
+            max-width: 580px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 28px;
+            padding: 26px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+        }
+
+        .panel-section-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #90A4AE;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .slider-header span.val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            color: #00E676;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #252836;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #FFFFFF;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+
+        /* Preset buttons */
+        .presets-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .btn-preset {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: #CFD8DC;
+            padding: 8px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn-preset:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #FFF;
+        }
+
+        .btn-preset.climb:hover {
+            border-color: var(--climb-color);
+            color: var(--climb-color);
+        }
+
+        .btn-preset.sink:hover {
+            border-color: var(--sink-color);
+            color: var(--sink-color);
+        }
+
+        /* Live telemetry and acoustic monitor */
+        .telemetry-box {
+            background: #0D0E15;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 14px;
+            padding: 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .telemetry-row {
+            display: flex;
+            justify-content: space-between;
+            color: #90A4AE;
+        }
+
+        .telemetry-row .val {
+            color: #ECEFF1;
+            font-weight: 600;
+        }
+
+        /* Raw LK8EX1 Serial Stream Box */
+        .serial-stream-box {
+            background: #000;
+            border: 1px solid rgba(0, 230, 118, 0.2);
+            border-radius: 12px;
+            padding: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: #00E676;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+
+        .stream-title {
+            font-size: 10px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        /* Sound indicator visualizer */
+        .audio-wave-visualizer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            height: 28px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 4px 10px;
+        }
+
+        .wave-bar {
+            width: 4px;
+            height: 6px;
+            background: #444;
+            border-radius: 2px;
+            transition: height 0.05s ease, background 0.1s;
+        }
+
+        .audio-wave-visualizer.active .wave-bar {
+            background: var(--climb-color);
+        }
+
+        .audio-wave-visualizer.sink-active .wave-bar {
+            background: var(--sink-color);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>VarioAppli — Web Audio & Telemetry Simulator</h1>
+        <p>Interactive Hardware Simulation &bull; LK8EX1 Parser &bull; Real-time PCM Synthesis</p>
+    </header>
+
+    <div class="main-container">
+
+        <!-- ── PHONE PREVIEW ──────────────────────────────────────────────── -->
+        <div class="phone-wrapper">
+            <div class="phone-screen">
+                <div class="phone-notch"></div>
+                <div class="phone-status-bar">
+                    <span id="phoneTime">12:00</span>
+                    <span>5G &nbsp; 94%</span>
+                </div>
+
+                <div class="phone-content">
+                    <!-- Vz -->
+                    <div class="vario-label">Vz</div>
+                    <div class="vario-vz-val" id="dispVz">+0.0</div>
+                    <div class="vario-unit">m/s</div>
+
+                    <div class="vario-spacer"></div>
+
+                    <!-- Altitude -->
+                    <div class="vario-label">ALT</div>
+                    <div class="vario-alt-val" id="dispAlt">1420</div>
+                    <div class="vario-unit">m</div>
+
+                    <!-- Buttons -->
+                    <div class="vario-buttons">
+                        <button class="btn-vario btn-start" id="btnStart" onclick="startVario()">START</button>
+                        <button class="btn-vario btn-stop" id="btnStop" onclick="stopVario()">STOP</button>
+                    </div>
+
+                    <div class="service-badge">
+                        <div class="badge-dot" id="serviceDot"></div>
+                        <span id="serviceText">Service Stopped</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── SIMULATION CONTROLS ────────────────────────────────────────── -->
+        <div class="controls-panel">
+            <div class="panel-section-title">
+                <span>Flight Telemetry Controls</span>
+                <span style="font-size: 11px; color: #00E676;">SAMD21 + BMP390 Mock</span>
+            </div>
+
+            <!-- Vz Slider -->
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span>Vertical Speed (Vz)</span>
+                    <span class="val" id="sliderVzVal">+0.0 m/s</span>
+                </div>
+                <input type="range" id="sliderVz" min="-8.0" max="6.0" step="0.1" value="0.0" oninput="onVzChange(this.value)">
+            </div>
+
+            <!-- Presets -->
+            <div class="presets-grid">
+                <button class="btn-preset climb" onclick="setPreset(1.2)">Weak Thermal (+1.2)</button>
+                <button class="btn-preset climb" onclick="setPreset(3.0)">Good Core (+3.0)</button>
+                <button class="btn-preset climb" onclick="setPreset(5.5)">Strong Lift (+5.5)</button>
+                <button class="btn-preset" onclick="setPreset(0.0)">Neutral (0.0)</button>
+                <button class="btn-preset sink" onclick="setPreset(-1.5)">Sink (-1.5)</button>
+                <button class="btn-preset sink" onclick="setPreset(-4.0)">Heavy Sink (-4.0)</button>
+            </div>
+
+            <!-- Altitude Slider -->
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span>Barometric Altitude</span>
+                    <span class="val" id="sliderAltVal">1420 m</span>
+                </div>
+                <input type="range" id="sliderAlt" min="0" max="4500" step="10" value="1420" oninput="onAltChange(this.value)">
+            </div>
+
+            <!-- Live Acoustic Engine Telemetry -->
+            <div class="telemetry-box">
+                <div class="telemetry-row">
+                    <span>Acoustic Mode:</span>
+                    <span class="val" id="telMode">DEADBAND (Silence)</span>
+                </div>
+                <div class="telemetry-row">
+                    <span>Audio Frequency:</span>
+                    <span class="val" id="telFreq">— Hz</span>
+                </div>
+                <div class="telemetry-row">
+                    <span>Beep Rate / Duty:</span>
+                    <span class="val" id="telBeepRate">—</span>
+                </div>
+                <div class="telemetry-row" style="margin-top: 4px; align-items: center;">
+                    <span>Audio Monitor:</span>
+                    <div class="audio-wave-visualizer" id="waveVisualizer">
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LK8EX1 Serial Feed -->
+            <div>
+                <div class="stream-title">Simulated USB Serial Stream ($LK8EX1 Output)</div>
+                <div class="serial-stream-box" id="serialStream">
+                    $LK8EX1,86200,99999,0,210,999,*3F
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── SIMULATOR JAVASCRIPT ENGINE ──────────────────────────────────────── -->
+    <script>
+        // ── State ─────────────────────────────────────────────────────────────
+        let isRunning = false;
+        let currentVz = 0.0;
+        let currentAlt = 1420;
+
+        // ── Audio Engine (Web Audio API) matching VarioAudioEngine.kt ──────────
+        let audioCtx = null;
+        let osc = null;
+        let gainNode = null;
+        let beepIntervalTimer = null;
+
+        // VarioMath constants
+        const VZ_CLIMB_THRESHOLD = 0.3;
+        const VZ_SINK_THRESHOLD = -2.0;
+        const CLIMB_FREQ_MIN = 400.0;
+        const CLIMB_FREQ_MAX = 1200.0;
+        const CLIMB_VZ_MAX = 5.0;
+
+        const CLIMB_PERIOD_MAX_MS = (10667 / 16000) * 1000; // ~666 ms
+        const CLIMB_PERIOD_MIN_MS = (2667 / 16000) * 1000;  // ~166 ms
+        const CLIMB_DUTY_MIN = 0.40;
+        const CLIMB_DUTY_MAX = 0.85;
+
+        const SINK_FREQ_MAX = 400.0;
+        const SINK_FREQ_MIN = 200.0;
+        const SINK_VZ_MAX = -8.0;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function startVario() {
+            initAudio();
+            isRunning = true;
+            document.getElementById('serviceDot').classList.add('active');
+            document.getElementById('serviceText').textContent = 'Service Running (115200 baud)';
+            document.getElementById('serviceText').style.color = '#00E676';
+            updateAudioEngine();
+        }
+
+        function stopVario() {
+            isRunning = false;
+            document.getElementById('serviceDot').classList.remove('active');
+            document.getElementById('serviceText').textContent = 'Service Stopped';
+            document.getElementById('serviceText').style.color = '#555';
+            silenceAudio();
+            updateTelemetry();
+        }
+
+        function silenceAudio() {
+            if (beepIntervalTimer) {
+                clearInterval(beepIntervalTimer);
+                beepIntervalTimer = null;
+            }
+            if (osc) {
+                try { osc.stop(); osc.disconnect(); } catch (e) {}
+                osc = null;
+            }
+            if (gainNode) {
+                gainNode.disconnect();
+                gainNode = null;
+            }
+            document.getElementById('waveVisualizer').className = 'audio-wave-visualizer';
+            animateWaveBars(false);
+        }
+
+        function updateAudioEngine() {
+            if (!isRunning) {
+                silenceAudio();
+                return;
+            }
+
+            silenceAudio();
+
+            if (currentVz >= VZ_CLIMB_THRESHOLD) {
+                // Climb tone: beeping sine wave
+                const ratio = Math.min(1.0, Math.max(0.0, (currentVz - VZ_CLIMB_THRESHOLD) / (CLIMB_VZ_MAX - VZ_CLIMB_THRESHOLD)));
+                const freq = CLIMB_FREQ_MIN + (CLIMB_FREQ_MAX - CLIMB_FREQ_MIN) * ratio;
+                const periodMs = CLIMB_PERIOD_MAX_MS - (CLIMB_PERIOD_MAX_MS - CLIMB_PERIOD_MIN_MS) * ratio;
+                const duty = CLIMB_DUTY_MIN + (CLIMB_DUTY_MAX - CLIMB_DUTY_MIN) * ratio;
+                const onDurationMs = periodMs * duty;
+
+                document.getElementById('waveVisualizer').className = 'audio-wave-visualizer active';
+
+                function playBeep() {
+                    if (!isRunning || currentVz < VZ_CLIMB_THRESHOLD) return;
+
+                    const now = audioCtx.currentTime;
+                    const beepOsc = audioCtx.createOscillator();
+                    const beepGain = audioCtx.createGain();
+
+                    beepOsc.type = 'sine';
+                    beepOsc.frequency.setValueAtTime(freq, now);
+
+                    // Gentle envelope to avoid speaker clicks
+                    beepGain.gain.setValueAtTime(0.001, now);
+                    beepGain.gain.exponentialRampToValueAtTime(0.25, now + 0.008);
+                    beepGain.gain.setValueAtTime(0.25, now + (onDurationMs / 1000) - 0.008);
+                    beepGain.gain.exponentialRampToValueAtTime(0.001, now + (onDurationMs / 1000));
+
+                    beepOsc.connect(beepGain);
+                    beepGain.connect(audioCtx.destination);
+
+                    beepOsc.start(now);
+                    beepOsc.stop(now + (onDurationMs / 1000));
+
+                    animateWaveBars(true);
+                    setTimeout(() => animateWaveBars(false), onDurationMs);
+                }
+
+                playBeep();
+                beepIntervalTimer = setInterval(playBeep, periodMs);
+
+            } else if (currentVz <= VZ_SINK_THRESHOLD) {
+                // Sink tone: continuous low alarm
+                const ratio = Math.min(1.0, Math.max(0.0, (currentVz - VZ_SINK_THRESHOLD) / (SINK_VZ_MAX - VZ_SINK_THRESHOLD)));
+                const freq = SINK_FREQ_MAX - (SINK_FREQ_MAX - SINK_FREQ_MIN) * ratio;
+
+                const now = audioCtx.currentTime;
+                osc = audioCtx.createOscillator();
+                gainNode = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+
+                gainNode.gain.setValueAtTime(0.001, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.25, now + 0.05);
+
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                osc.start(now);
+
+                document.getElementById('waveVisualizer').className = 'audio-wave-visualizer sink-active';
+                animateWaveBars(true);
+            }
+
+            updateTelemetry();
+        }
+
+        function animateWaveBars(on) {
+            const bars = document.querySelectorAll('.wave-bar');
+            bars.forEach((b, i) => {
+                if (on) {
+                    const h = Math.floor(Math.random() * 18) + 8;
+                    b.style.height = `${h}px`;
+                } else {
+                    b.style.height = '6px';
+                }
+            });
+        }
+
+        // ── Telemetry & Display Update ────────────────────────────────────────
+        function onVzChange(val) {
+            currentVz = parseFloat(val);
+            updateUI();
+            updateAudioEngine();
+            emitLk8ex1();
+        }
+
+        function onAltChange(val) {
+            currentAlt = parseInt(val, 10);
+            updateUI();
+            emitLk8ex1();
+        }
+
+        function setPreset(vz) {
+            document.getElementById('sliderVz').value = vz;
+            onVzChange(vz);
+        }
+
+        function updateUI() {
+            // Format Vz for display
+            const sign = currentVz >= 0 ? "+" : "";
+            const vzFormatted = sign + currentVz.toFixed(1);
+            document.getElementById('dispVz').textContent = vzFormatted;
+            document.getElementById('sliderVzVal').textContent = `${vzFormatted} m/s`;
+
+            // Color coding
+            const vzElem = document.getElementById('dispVz');
+            if (currentVz > 0.3) {
+                vzElem.style.color = "var(--climb-color)";
+            } else if (currentVz < -2.0) {
+                vzElem.style.color = "var(--sink-color)";
+            } else {
+                vzElem.style.color = "var(--neutral-color)";
+            }
+
+            // Altitude
+            document.getElementById('dispAlt').textContent = currentAlt;
+            document.getElementById('sliderAltVal').textContent = `${currentAlt} m`;
+        }
+
+        function updateTelemetry() {
+            const modeEl = document.getElementById('telMode');
+            const freqEl = document.getElementById('telFreq');
+            const beepEl = document.getElementById('telBeepRate');
+
+            if (!isRunning) {
+                modeEl.textContent = 'SERVICE OFF';
+                freqEl.textContent = '— Hz';
+                beepEl.textContent = '—';
+                return;
+            }
+
+            if (currentVz >= VZ_CLIMB_THRESHOLD) {
+                const ratio = Math.min(1.0, Math.max(0.0, (currentVz - VZ_CLIMB_THRESHOLD) / (CLIMB_VZ_MAX - VZ_CLIMB_THRESHOLD)));
+                const freq = Math.round(CLIMB_FREQ_MIN + (CLIMB_FREQ_MAX - CLIMB_FREQ_MIN) * ratio);
+                const periodMs = Math.round(CLIMB_PERIOD_MAX_MS - (CLIMB_PERIOD_MAX_MS - CLIMB_PERIOD_MIN_MS) * ratio);
+                const rateHz = (1000 / periodMs).toFixed(1);
+                const duty = Math.round((CLIMB_DUTY_MIN + (CLIMB_DUTY_MAX - CLIMB_DUTY_MIN) * ratio) * 100);
+
+                modeEl.textContent = 'CLIMB (Thermal Beep)';
+                modeEl.style.color = 'var(--climb-color)';
+                freqEl.textContent = `${freq} Hz`;
+                beepEl.textContent = `${rateHz} Hz (${duty}% duty)`;
+            } else if (currentVz <= VZ_SINK_THRESHOLD) {
+                const ratio = Math.min(1.0, Math.max(0.0, (currentVz - VZ_SINK_THRESHOLD) / (SINK_VZ_MAX - VZ_SINK_THRESHOLD)));
+                const freq = Math.round(SINK_FREQ_MAX - (SINK_FREQ_MAX - SINK_FREQ_MIN) * ratio);
+
+                modeEl.textContent = 'SINK (Descent Alarm)';
+                modeEl.style.color = 'var(--sink-color)';
+                freqEl.textContent = `${freq} Hz`;
+                beepEl.textContent = 'Continuous (100%)';
+            } else {
+                modeEl.textContent = 'DEADBAND (Silence)';
+                modeEl.style.color = '#90A4AE';
+                freqEl.textContent = 'Muted';
+                beepEl.textContent = 'None';
+            }
+        }
+
+        // ── LK8EX1 Sentence Formatter ─────────────────────────────────────────
+        function emitLk8ex1() {
+            // Convert altitude to standard barometric pressure: P = 101325 * (1 - h / 44330)^5.25588
+            const pressure = Math.round(101325 * Math.pow(1 - (currentAlt / 44330), 5.25588));
+            const varioCmS = Math.round(currentVz * 100);
+            const sentenceCore = `LK8EX1,${pressure},99999,${varioCmS},215,999`;
+
+            // NMEA XOR checksum
+            let cksum = 0;
+            for (let i = 0; i < sentenceCore.length; i++) {
+                cksum ^= sentenceCore.charCodeAt(i);
+            }
+            const ckHex = cksum.toString(16).toUpperCase().padStart(2, '0');
+            const fullSentence = `$${sentenceCore}*${ckHex}`;
+
+            document.getElementById('serialStream').textContent = fullSentence;
+        }
+
+        // Clock in phone status bar
+        function updateClock() {
+            const d = new Date();
+            const h = String(d.getHours()).padStart(2, '0');
+            const m = String(d.getMinutes()).padStart(2, '0');
+            document.getElementById('phoneTime').textContent = `${h}:${m}`;
+        }
+
+        setInterval(updateClock, 1000);
+        updateClock();
+        updateUI();
+        emitLk8ex1();
+    </script>
+</body>
+</html>
