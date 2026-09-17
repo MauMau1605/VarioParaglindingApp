@@ -1,0 +1,37 @@
+{
+    "project_name": "vario-android-lk8ex1",
+    "default_role": "orchestrator",
+    "routing_rules": {
+        "orchestrator": {
+            "prompt_file": ".antigravity/prompts/orchestrator.md",
+            "model": "gemini-3.8-flash",
+            "temperature": 0.2,
+            "purpose": "Planification, validation des étapes, sélection des modèles"
+        },
+        "architect": {
+            "prompt_file": ".antigravity/prompts/architect.md",
+            "model": "opus-4.6",
+            "fallback_model": "gemini-3.1-pro",
+            "temperature": 0.1,
+            "purpose": "Conception haut niveau, API contracts, garanties temps réel"
+        },
+        "coder": {
+            "prompt_file": ".antigravity/prompts/coder.md",
+            "model": "gemini-3.8-flash",
+            "temperature": 0.2,
+            "purpose": "Écriture du code Kotlin (ForegroundService, Compose, AudioTrack)"
+        },
+        "tester": {
+            "prompt_file": ".antigravity/prompts/tester.md",
+            "model": "gemini-3.8-flash",
+            "temperature": 0.1,
+            "purpose": "Mocks série, tests JUnit5, assertions d'allocation mémoire"
+        },
+        "doc_writer": {
+            "prompt_file": ".antigravity/prompts/doc_writer.md",
+            "model": "gemini-3.8-flash",
+            "temperature": 0.3,
+            "purpose": "Génération de documentation, schémas Mermaid, manuel pilote"
+        }
+    }
+}

@@ -17,6 +17,3 @@ app/build/
 *.iml
 local.properties
 .DS_Store
-
-# Antigravity IDE configuration
-.antigravity/
