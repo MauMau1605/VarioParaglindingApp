@@ -70,6 +70,9 @@ dependencies {
     // USB Serial — via JitPack
     implementation("com.github.mik3y:usb-serial-for-android:3.8.0")
 
+    // Location (GPS)
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
     // Unit Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.google.truth:truth:1.4.2")

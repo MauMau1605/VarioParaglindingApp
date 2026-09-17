@@ -40,4 +40,29 @@ class VarioDataTest {
         assertEquals(a.hashCode(), b.hashCode())
         assertNotEquals(a, c)
     }
+
+    @Test
+    fun gpsAndTakeoffFields_defaultAndCustomValues() {
+        val defaultData = VarioData()
+        assertEquals(null, defaultData.distanceToTakeoffM)
+        assertEquals(false, defaultData.gpsFixAcquired)
+        assertEquals(false, defaultData.isCalibrated)
+
+        val customData = VarioData(
+            altitudeM = 1200f,
+            vzMs = 1.5f,
+            distanceToTakeoffM = 340.5f,
+            gpsFixAcquired = true,
+            isCalibrated = true,
+            latitude = 45.1885,
+            longitude = 5.7245,
+            gpsAltitudeM = 1205f
+        )
+        assertEquals(340.5f, customData.distanceToTakeoffM)
+        assertEquals(true, customData.gpsFixAcquired)
+        assertEquals(true, customData.isCalibrated)
+        assertEquals(45.1885, customData.latitude)
+        assertEquals(5.7245, customData.longitude)
+        assertEquals(1205f, customData.gpsAltitudeM)
+    }
 }

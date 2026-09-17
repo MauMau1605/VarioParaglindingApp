@@ -52,6 +52,12 @@ class VarioAudioEngine {
     @Volatile
     var currentVz: Float = 0f
 
+    /**
+     * When true, audio output is muted (silence written to buffer).
+     */
+    @Volatile
+    var isMuted: Boolean = false
+
     // ── Pre-allocated resources ──────────────────────────────────────────────
 
     /** PCM sample buffer — allocated once, reused every write cycle. */
@@ -156,6 +162,10 @@ class VarioAudioEngine {
      * Exposed as internal for unit testing without starting an [AudioTrack].
      */
     internal fun generateBuffer(vz: Float, outBuffer: ShortArray) {
+        if (isMuted) {
+            fillSilence(outBuffer)
+            return
+        }
         when {
             vz >= VarioMath.VZ_CLIMB_THRESHOLD -> fillClimbTone(vz, outBuffer)
             vz <= VarioMath.VZ_SINK_THRESHOLD -> fillSinkTone(vz, outBuffer)

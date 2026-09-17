@@ -73,13 +73,13 @@
         /* ── Phone Frame ──────────────────────────────────────────────────────── */
         .phone-wrapper {
             position: relative;
-            width: 360px;
-            height: 740px;
-            background: #1e1e24;
+            width: 380px;
+            height: 760px;
+            background: #141721;
             border-radius: 48px;
             padding: 12px;
             box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7),
-                        0 0 0 1px rgba(255, 255, 255, 0.15),
+                        0 0 0 1px rgba(255, 255, 255, 0.12),
                         inset 0 0 0 2px rgba(0, 0, 0, 0.6);
             display: flex;
             flex-direction: column;
@@ -87,7 +87,7 @@
         }
 
         .phone-screen {
-            background-color: var(--phone-bg);
+            background-color: #090D14;
             border-radius: 38px;
             width: 100%;
             height: 100%;
@@ -96,12 +96,14 @@
             position: relative;
             overflow: hidden;
             border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 24px 20px 20px;
+            justify-content: space-between;
         }
 
         .phone-notch {
             width: 120px;
             height: 22px;
-            background: #1e1e24;
+            background: #141721;
             border-bottom-left-radius: 14px;
             border-bottom-right-radius: 14px;
             margin: 0 auto;
@@ -112,125 +114,303 @@
             z-index: 10;
         }
 
-        .phone-status-bar {
-            height: 38px;
-            padding: 6px 20px 0;
+        /* Top Header Bar */
+        .cockpit-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 11px;
-            font-weight: 600;
-            color: rgba(255, 255, 255, 0.6);
-            z-index: 5;
+            margin-top: 10px;
+            padding-bottom: 8px;
         }
 
-        .phone-content {
+        .gps-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #94A3B8;
+        }
+
+        .gps-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #64748B;
+            transition: background 0.3s;
+        }
+
+        .gps-dot.ready {
+            background: #22C55E;
+            box-shadow: 0 0 8px #22C55E;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .flight-timer {
+            font-size: 16px;
+            font-weight: 700;
+            color: #8B9CB0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .flight-timer.active {
+            color: #CBD5E1;
+        }
+
+        .speaker-btn {
+            width: 36px;
+            height: 36px;
+            background: #131926;
+            border: 1px solid #1E2A3A;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #94A3B8;
+            transition: all 0.2s;
+        }
+
+        .speaker-btn:hover {
+            border-color: #334155;
+            color: #FFF;
+        }
+
+        .speaker-btn.muted {
+            color: #EF4444;
+            border-color: rgba(239, 68, 68, 0.4);
+        }
+
+        /* Variometer Section */
+        .vario-main-section {
+            display: flex;
+            flex-direction: column;
+            margin-top: 6px;
+        }
+
+        .vario-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+        }
+
+        /* Ladder Gauge */
+        .ladder-gauge-container {
+            width: 36px;
+            height: 160px;
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .ladder-rail {
+            position: absolute;
+            right: 4px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #1E293B;
+        }
+
+        .ladder-ticks {
+            position: absolute;
+            right: 4px;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 2px 0;
+        }
+
+        .ladder-tick {
+            height: 2px;
+            width: 16px;
+            background: #1E293B;
+            border-radius: 1px;
+            transition: background 0.15s, width 0.15s;
+        }
+
+        .ladder-tick.center {
+            width: 24px;
+            height: 3px;
+            background: #64748B;
+        }
+
+        .ladder-tick.active-climb {
+            background: #4ADE80;
+        }
+
+        .ladder-tick.active-sink {
+            background: #F87171;
+        }
+
+        .ladder-fill-bar {
+            position: absolute;
+            right: 2px;
+            width: 6px;
+            border-radius: 3px;
+            background: #334155;
+            transition: height 0.1s linear, top 0.1s linear, background 0.2s;
+        }
+
+        .vario-digits-container {
             flex: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 24px;
-            text-align: center;
-        }
-
-        /* Exact VarioScreen Match */
-        .vario-label {
-            font-size: 16px;
-            font-weight: 300;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
         }
 
         .vario-vz-val {
-            font-size: 88px;
-            font-weight: 900;
-            color: var(--neutral-color);
-            line-height: 1.0;
-            margin: 6px 0 2px;
-            transition: color 0.15s ease;
+            font-size: 80px;
+            font-weight: 800;
+            color: #DCE5F0;
+            line-height: 0.95;
+            letter-spacing: -2px;
             font-variant-numeric: tabular-nums;
+            margin-bottom: 2px;
         }
 
-        .vario-unit {
-            font-size: 18px;
-            font-weight: 300;
-            color: var(--text-muted);
+        .vario-unit-text {
+            font-size: 16px;
+            color: #8B9CB0;
+            font-weight: 400;
         }
 
-        .vario-spacer {
-            height: 36px;
+        .vario-flight-status {
+            font-size: 16px;
+            font-weight: 500;
+            color: #8B9CB0;
+            margin-top: 2px;
+        }
+
+        .vario-flight-status.flying {
+            color: #4ADE80;
+        }
+
+        .vario-divider {
+            height: 1px;
+            background: #161E2D;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        /* Altitude Section */
+        .altitude-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 6px 0;
+        }
+
+        .alt-readout {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
         }
 
         .vario-alt-val {
             font-size: 46px;
-            font-weight: 600;
+            font-weight: 800;
             color: #FFFFFF;
-            line-height: 1.1;
-            margin: 4px 0 2px;
+            line-height: 1;
             font-variant-numeric: tabular-nums;
         }
 
-        .vario-buttons {
+        .alt-unit {
+            font-size: 19px;
+            color: #8B9CB0;
+            font-weight: 400;
+        }
+
+        .alt-label {
+            font-size: 18px;
+            color: #8B9CB0;
+            font-weight: 400;
+            padding-bottom: 4px;
+        }
+
+        /* Stats Cards */
+        .stats-row {
             display: flex;
-            gap: 16px;
-            margin-top: 48px;
+            gap: 12px;
+            width: 100%;
         }
 
-        .btn-vario {
-            border: none;
-            padding: 12px 28px;
-            border-radius: 24px;
-            font-weight: 800;
-            font-size: 14px;
-            cursor: pointer;
-            transition: transform 0.1s, box-shadow 0.2s, opacity 0.2s;
-            outline: none;
-        }
-
-        .btn-vario:active {
-            transform: scale(0.95);
-        }
-
-        .btn-start {
-            background-color: var(--climb-color);
-            color: #000;
-            box-shadow: 0 4px 18px rgba(0, 230, 118, 0.35);
-        }
-
-        .btn-stop {
-            background-color: var(--sink-color);
-            color: #FFF;
-            box-shadow: 0 4px 18px rgba(255, 82, 82, 0.35);
-        }
-
-        .service-badge {
-            position: absolute;
-            bottom: 16px;
-            font-size: 11px;
-            color: #555;
+        .stat-card {
+            flex: 1;
+            background: #131926;
+            border: 1px solid #1B2436;
+            border-radius: 18px;
+            padding: 14px 16px;
             display: flex;
-            align-items: center;
+            flex-direction: column;
             gap: 6px;
         }
 
-        .badge-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #444;
+        .stat-title {
+            font-size: 13px;
+            color: #8B9CB0;
+            font-weight: 400;
         }
 
-        .badge-dot.active {
-            background: var(--climb-color);
-            box-shadow: 0 0 10px var(--climb-color);
-            animation: pulse 1.5s infinite;
+        .stat-value-container {
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
         }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
+        .stat-value {
+            font-size: 26px;
+            font-weight: 700;
+            color: #FFFFFF;
+            line-height: 1.1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stat-unit {
+            font-size: 15px;
+            color: #8B9CB0;
+        }
+
+        /* Action Button */
+        .btn-action-main {
+            width: 100%;
+            height: 58px;
+            border-radius: 18px;
+            border: none;
+            background: #4ADE80;
+            color: #0B1710;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            outline: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-action-main:hover {
+            filter: brightness(1.08);
+        }
+
+        .btn-action-main:active {
+            transform: scale(0.98);
+        }
+
+        .btn-action-main.stop-mode {
+            background: #EF4444;
+            color: #FFFFFF;
         }
 
         /* ── Control / Simulation Panel ───────────────────────────────────────── */
@@ -428,35 +608,75 @@
         <div class="phone-wrapper">
             <div class="phone-screen">
                 <div class="phone-notch"></div>
-                <div class="phone-status-bar">
-                    <span id="phoneTime">12:00</span>
-                    <span>5G &nbsp; 94%</span>
-                </div>
 
-                <div class="phone-content">
-                    <!-- Vz -->
-                    <div class="vario-label">Vz</div>
-                    <div class="vario-vz-val" id="dispVz">+0.0</div>
-                    <div class="vario-unit">m/s</div>
-
-                    <div class="vario-spacer"></div>
-
-                    <!-- Altitude -->
-                    <div class="vario-label">ALT</div>
-                    <div class="vario-alt-val" id="dispAlt">1420</div>
-                    <div class="vario-unit">m</div>
-
-                    <!-- Buttons -->
-                    <div class="vario-buttons">
-                        <button class="btn-vario btn-start" id="btnStart" onclick="startVario()">START</button>
-                        <button class="btn-vario btn-stop" id="btnStop" onclick="stopVario()">STOP</button>
+                <!-- Cockpit Top Header -->
+                <div class="cockpit-header">
+                    <div class="gps-status">
+                        <div class="gps-dot ready" id="simGpsDot"></div>
+                        <span id="simGpsText">GPS en attente</span>
                     </div>
-
-                    <div class="service-badge">
-                        <div class="badge-dot" id="serviceDot"></div>
-                        <span id="serviceText">Service Stopped</span>
+                    <div class="header-right">
+                        <div class="flight-timer" id="simFlightTimer">00:00</div>
+                        <button class="speaker-btn" id="simSpeakerBtn" onclick="toggleSimMute()" title="Mute/Activer le son">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="speakerSvg">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                <path id="speakerWave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                            </svg>
+                        </button>
                     </div>
                 </div>
+
+                <!-- Variometer Section (Ladder + Giant Vz) -->
+                <div class="vario-main-section">
+                    <div class="vario-row">
+                        <!-- Vertical Ladder Gauge -->
+                        <div class="ladder-gauge-container">
+                            <div class="ladder-rail"></div>
+                            <div class="ladder-ticks" id="ladderTicks"></div>
+                            <div class="ladder-fill-bar" id="ladderFillBar"></div>
+                        </div>
+
+                        <!-- Vz Display -->
+                        <div class="vario-digits-container">
+                            <div class="vario-vz-val" id="dispVz">+0.0</div>
+                            <div class="vario-unit-text">m/s</div>
+                            <div class="vario-flight-status" id="dispFlightStatus">Posé</div>
+                        </div>
+                    </div>
+                    <div class="vario-divider"></div>
+                </div>
+
+                <!-- Altitude Readout -->
+                <div class="altitude-section">
+                    <div class="alt-readout">
+                        <div class="vario-alt-val" id="dispAlt">1420</div>
+                        <div class="alt-unit">m</div>
+                    </div>
+                    <div class="alt-label">Altitude</div>
+                </div>
+
+                <!-- Stats Cards (Plafond atteint + Distance au déco) -->
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-title">Plafond atteint</div>
+                        <div class="stat-value-container">
+                            <div class="stat-value" id="dispPlafond">1420</div>
+                            <div class="stat-unit">m</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-title">Distance au déco</div>
+                        <div class="stat-value-container">
+                            <div class="stat-value" id="dispDistDeco">0,0</div>
+                            <div class="stat-unit">km</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <button class="btn-action-main" id="btnMainAction" onclick="toggleFlight()">
+                    Démarrer le vol
+                </button>
             </div>
         </div>
 
@@ -537,10 +757,15 @@
 
     <!-- ── SIMULATOR JAVASCRIPT ENGINE ──────────────────────────────────────── -->
     <script>
-        // ── State ─────────────────────────────────────────────────────────────
-        let isRunning = false;
+        // ── Flight & Vario State ──────────────────────────────────────────────
+        let isFlightActive = false;
+        let flightDurationSec = 0;
+        let flightTimerInterval = null;
+        let isMuted = false;
         let currentVz = 0.0;
         let currentAlt = 1420;
+        let maxAltitudeM = 1420;
+        let distanceDecoKm = 0.0;
 
         // ── Audio Engine (Web Audio API) matching VarioAudioEngine.kt ──────────
         let audioCtx = null;
@@ -548,15 +773,14 @@
         let gainNode = null;
         let beepIntervalTimer = null;
 
-        // VarioMath constants
         const VZ_CLIMB_THRESHOLD = 0.3;
         const VZ_SINK_THRESHOLD = -2.0;
         const CLIMB_FREQ_MIN = 400.0;
         const CLIMB_FREQ_MAX = 1200.0;
         const CLIMB_VZ_MAX = 5.0;
 
-        const CLIMB_PERIOD_MAX_MS = (10667 / 16000) * 1000; // ~666 ms
-        const CLIMB_PERIOD_MIN_MS = (2667 / 16000) * 1000;  // ~166 ms
+        const CLIMB_PERIOD_MAX_MS = (10667 / 16000) * 1000;
+        const CLIMB_PERIOD_MIN_MS = (2667 / 16000) * 1000;
         const CLIMB_DUTY_MIN = 0.40;
         const CLIMB_DUTY_MAX = 0.85;
 
@@ -573,21 +797,68 @@
             }
         }
 
-        function startVario() {
+        function toggleFlight() {
             initAudio();
-            isRunning = true;
-            document.getElementById('serviceDot').classList.add('active');
-            document.getElementById('serviceText').textContent = 'Service Running (115200 baud)';
-            document.getElementById('serviceText').style.color = '#00E676';
-            updateAudioEngine();
+            if (!isFlightActive) {
+                // Start Flight
+                isFlightActive = true;
+                flightDurationSec = 0;
+                maxAltitudeM = currentAlt;
+                distanceDecoKm = 0.0;
+                document.getElementById('dispPlafond').textContent = maxAltitudeM;
+
+                document.getElementById('btnMainAction').textContent = 'Arrêter le vol';
+                document.getElementById('btnMainAction').classList.add('stop-mode');
+                document.getElementById('dispFlightStatus').textContent = 'En vol';
+                document.getElementById('dispFlightStatus').classList.add('flying');
+                document.getElementById('simGpsText').textContent = 'GPS prêt';
+                document.getElementById('simGpsDot').classList.add('ready');
+
+                document.getElementById('simFlightTimer').classList.add('active');
+
+                clearInterval(flightTimerInterval);
+                flightTimerInterval = setInterval(() => {
+                    flightDurationSec++;
+                    const mins = String(Math.floor(flightDurationSec / 60)).padStart(2, '0');
+                    const secs = String(flightDurationSec % 60).padStart(2, '0');
+                    document.getElementById('simFlightTimer').textContent = `${mins}:${secs}`;
+                    
+                    // Simulate progressive distance increase in flight
+                    distanceDecoKm += 0.01;
+                    document.getElementById('dispDistDeco').textContent = distanceDecoKm.toFixed(1).replace('.', ',');
+                }, 1000);
+
+                updateAudioEngine();
+            } else {
+                // Stop Flight
+                isFlightActive = false;
+                clearInterval(flightTimerInterval);
+
+                document.getElementById('btnMainAction').textContent = 'Démarrer le vol';
+                document.getElementById('btnMainAction').classList.remove('stop-mode');
+                document.getElementById('dispFlightStatus').textContent = 'Posé';
+                document.getElementById('dispFlightStatus').classList.remove('flying');
+                document.getElementById('simFlightTimer').classList.remove('active');
+
+                silenceAudio();
+                updateTelemetry();
+            }
         }
 
-        function stopVario() {
-            isRunning = false;
-            document.getElementById('serviceDot').classList.remove('active');
-            document.getElementById('serviceText').textContent = 'Service Stopped';
-            document.getElementById('serviceText').style.color = '#555';
-            silenceAudio();
+        function toggleSimMute() {
+            isMuted = !isMuted;
+            const btn = document.getElementById('simSpeakerBtn');
+            const wave = document.getElementById('speakerWave1');
+
+            if (isMuted) {
+                btn.classList.add('muted');
+                if (wave) wave.setAttribute('d', 'M17 9l-6 6 M11 9l6 6');
+                silenceAudio();
+            } else {
+                btn.classList.remove('muted');
+                if (wave) wave.setAttribute('d', 'M15.54 8.46a5 5 0 0 1 0 7.07');
+                if (isFlightActive) updateAudioEngine();
+            }
             updateTelemetry();
         }
 
@@ -609,7 +880,7 @@
         }
 
         function updateAudioEngine() {
-            if (!isRunning) {
+            if (!isFlightActive || isMuted) {
                 silenceAudio();
                 return;
             }
@@ -617,7 +888,6 @@
             silenceAudio();
 
             if (currentVz >= VZ_CLIMB_THRESHOLD) {
-                // Climb tone: beeping sine wave
                 const ratio = Math.min(1.0, Math.max(0.0, (currentVz - VZ_CLIMB_THRESHOLD) / (CLIMB_VZ_MAX - VZ_CLIMB_THRESHOLD)));
                 const freq = CLIMB_FREQ_MIN + (CLIMB_FREQ_MAX - CLIMB_FREQ_MIN) * ratio;
                 const periodMs = CLIMB_PERIOD_MAX_MS - (CLIMB_PERIOD_MAX_MS - CLIMB_PERIOD_MIN_MS) * ratio;
@@ -627,7 +897,7 @@
                 document.getElementById('waveVisualizer').className = 'audio-wave-visualizer active';
 
                 function playBeep() {
-                    if (!isRunning || currentVz < VZ_CLIMB_THRESHOLD) return;
+                    if (!isFlightActive || isMuted || currentVz < VZ_CLIMB_THRESHOLD) return;
 
                     const now = audioCtx.currentTime;
                     const beepOsc = audioCtx.createOscillator();
@@ -636,7 +906,6 @@
                     beepOsc.type = 'sine';
                     beepOsc.frequency.setValueAtTime(freq, now);
 
-                    // Gentle envelope to avoid speaker clicks
                     beepGain.gain.setValueAtTime(0.001, now);
                     beepGain.gain.exponentialRampToValueAtTime(0.25, now + 0.008);
                     beepGain.gain.setValueAtTime(0.25, now + (onDurationMs / 1000) - 0.008);
@@ -656,7 +925,6 @@
                 beepIntervalTimer = setInterval(playBeep, periodMs);
 
             } else if (currentVz <= VZ_SINK_THRESHOLD) {
-                // Sink tone: continuous low alarm
                 const ratio = Math.min(1.0, Math.max(0.0, (currentVz - VZ_SINK_THRESHOLD) / (SINK_VZ_MAX - VZ_SINK_THRESHOLD)));
                 const freq = SINK_FREQ_MAX - (SINK_FREQ_MAX - SINK_FREQ_MIN) * ratio;
 
@@ -683,14 +951,56 @@
 
         function animateWaveBars(on) {
             const bars = document.querySelectorAll('.wave-bar');
-            bars.forEach((b, i) => {
-                if (on) {
-                    const h = Math.floor(Math.random() * 18) + 8;
-                    b.style.height = `${h}px`;
-                } else {
-                    b.style.height = '6px';
-                }
+            bars.forEach(b => {
+                b.style.height = on ? `${Math.floor(Math.random() * 18) + 8}px` : '6px';
             });
+        }
+
+        // ── Ladder Gauge Renderer ─────────────────────────────────────────────
+        const LADDER_STEPS = 10;
+        const LADDER_MAX_VZ = 5.0;
+
+        function initLadderGauge() {
+            const container = document.getElementById('ladderTicks');
+            container.innerHTML = '';
+            for (let i = 0; i <= LADDER_STEPS; i++) {
+                const tick = document.createElement('div');
+                tick.className = 'ladder-tick' + (i === LADDER_STEPS / 2 ? ' center' : '');
+                tick.id = `tick_${i}`;
+                container.appendChild(tick);
+            }
+        }
+
+        function updateLadderGauge() {
+            const fillBar = document.getElementById('ladderFillBar');
+            const gaugeHeight = 160;
+            const centerY = gaugeHeight / 2;
+            const clampedVz = Math.min(LADDER_MAX_VZ, Math.max(-LADDER_MAX_VZ, currentVz));
+            const barH = Math.abs(clampedVz / LADDER_MAX_VZ) * centerY;
+
+            if (clampedVz > 0.1) {
+                fillBar.style.top = `${centerY - barH}px`;
+                fillBar.style.height = `${barH}px`;
+                fillBar.style.background = '#4ADE80';
+            } else if (clampedVz < -0.1) {
+                fillBar.style.top = `${centerY}px`;
+                fillBar.style.height = `${barH}px`;
+                fillBar.style.background = '#F87171';
+            } else {
+                fillBar.style.height = '0px';
+            }
+
+            for (let i = 0; i <= LADDER_STEPS; i++) {
+                const tick = document.getElementById(`tick_${i}`);
+                if (!tick) continue;
+                const stepVz = LADDER_MAX_VZ - (i * (2 * LADDER_MAX_VZ / LADDER_STEPS));
+                tick.classList.remove('active-climb', 'active-sink');
+                if (currentVz > 0.2 && stepVz >= 0 && stepVz <= currentVz) {
+                    tick.classList.add('active-climb');
+                } else if (currentVz < -1.5 && stepVz <= 0 && stepVz >= currentVz) {
+                    tick.classList.add('active-sink');
+                }
+            }
         }
 
         // ── Telemetry & Display Update ────────────────────────────────────────
@@ -703,6 +1013,9 @@
 
         function onAltChange(val) {
             currentAlt = parseInt(val, 10);
+            if (currentAlt > maxAltitudeM) {
+                maxAltitudeM = currentAlt;
+            }
             updateUI();
             emitLk8ex1();
         }
@@ -713,25 +1026,17 @@
         }
 
         function updateUI() {
-            // Format Vz for display
             const sign = currentVz >= 0 ? "+" : "";
             const vzFormatted = sign + currentVz.toFixed(1);
             document.getElementById('dispVz').textContent = vzFormatted;
             document.getElementById('sliderVzVal').textContent = `${vzFormatted} m/s`;
 
-            // Color coding
-            const vzElem = document.getElementById('dispVz');
-            if (currentVz > 0.3) {
-                vzElem.style.color = "var(--climb-color)";
-            } else if (currentVz < -2.0) {
-                vzElem.style.color = "var(--sink-color)";
-            } else {
-                vzElem.style.color = "var(--neutral-color)";
-            }
-
             // Altitude
             document.getElementById('dispAlt').textContent = currentAlt;
             document.getElementById('sliderAltVal').textContent = `${currentAlt} m`;
+            document.getElementById('dispPlafond').textContent = Math.max(maxAltitudeM, currentAlt);
+
+            updateLadderGauge();
         }
 
         function updateTelemetry() {
@@ -739,9 +1044,18 @@
             const freqEl = document.getElementById('telFreq');
             const beepEl = document.getElementById('telBeepRate');
 
-            if (!isRunning) {
-                modeEl.textContent = 'SERVICE OFF';
+            if (!isFlightActive) {
+                modeEl.textContent = 'VOL ARRÊTÉ (Posé)';
+                modeEl.style.color = '#8B9CB0';
                 freqEl.textContent = '— Hz';
+                beepEl.textContent = '—';
+                return;
+            }
+
+            if (isMuted) {
+                modeEl.textContent = 'MUTED (Audio coupé)';
+                modeEl.style.color = '#EF4444';
+                freqEl.textContent = 'Silence';
                 beepEl.textContent = '—';
                 return;
             }
@@ -753,34 +1067,32 @@
                 const rateHz = (1000 / periodMs).toFixed(1);
                 const duty = Math.round((CLIMB_DUTY_MIN + (CLIMB_DUTY_MAX - CLIMB_DUTY_MIN) * ratio) * 100);
 
-                modeEl.textContent = 'CLIMB (Thermal Beep)';
-                modeEl.style.color = 'var(--climb-color)';
+                modeEl.textContent = 'MONTEE (Bips thermiques)';
+                modeEl.style.color = '#4ADE80';
                 freqEl.textContent = `${freq} Hz`;
                 beepEl.textContent = `${rateHz} Hz (${duty}% duty)`;
             } else if (currentVz <= VZ_SINK_THRESHOLD) {
                 const ratio = Math.min(1.0, Math.max(0.0, (currentVz - VZ_SINK_THRESHOLD) / (SINK_VZ_MAX - VZ_SINK_THRESHOLD)));
                 const freq = Math.round(SINK_FREQ_MAX - (SINK_FREQ_MAX - SINK_FREQ_MIN) * ratio);
 
-                modeEl.textContent = 'SINK (Descent Alarm)';
-                modeEl.style.color = 'var(--sink-color)';
+                modeEl.textContent = 'DEGEULANTE (Alarme continue)';
+                modeEl.style.color = '#F87171';
                 freqEl.textContent = `${freq} Hz`;
                 beepEl.textContent = 'Continuous (100%)';
             } else {
-                modeEl.textContent = 'DEADBAND (Silence)';
+                modeEl.textContent = 'ZONE MORTE (Silence)';
                 modeEl.style.color = '#90A4AE';
-                freqEl.textContent = 'Muted';
+                freqEl.textContent = 'Silence';
                 beepEl.textContent = 'None';
             }
         }
 
         // ── LK8EX1 Sentence Formatter ─────────────────────────────────────────
         function emitLk8ex1() {
-            // Convert altitude to standard barometric pressure: P = 101325 * (1 - h / 44330)^5.25588
             const pressure = Math.round(101325 * Math.pow(1 - (currentAlt / 44330), 5.25588));
             const varioCmS = Math.round(currentVz * 100);
             const sentenceCore = `LK8EX1,${pressure},99999,${varioCmS},215,999`;
 
-            // NMEA XOR checksum
             let cksum = 0;
             for (let i = 0; i < sentenceCore.length; i++) {
                 cksum ^= sentenceCore.charCodeAt(i);
@@ -791,16 +1103,7 @@
             document.getElementById('serialStream').textContent = fullSentence;
         }
 
-        // Clock in phone status bar
-        function updateClock() {
-            const d = new Date();
-            const h = String(d.getHours()).padStart(2, '0');
-            const m = String(d.getMinutes()).padStart(2, '0');
-            document.getElementById('phoneTime').textContent = `${h}:${m}`;
-        }
-
-        setInterval(updateClock, 1000);
-        updateClock();
+        initLadderGauge();
         updateUI();
         emitLk8ex1();
     </script>

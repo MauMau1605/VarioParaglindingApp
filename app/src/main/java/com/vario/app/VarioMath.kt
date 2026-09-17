@@ -43,13 +43,33 @@ object VarioMath {
      * Converts atmospheric pressure in Pascals to barometric altitude in meters,
      * based on the ICAO International Standard Atmosphere (ISA) model.
      *
-     * @param pressurePa Pressure in Pascals (e.g. 101325 for sea level).
+     * @param pressurePa Pressure in Pascals (e.g. 101325 for standard sea level).
+     * @param qnhPa Sea-level reference pressure in Pascals (default: standard atmosphere [P0_PA]).
      * @return Altitude in meters, or 0f if pressure is non-positive.
      */
-    fun pressureToAltitude(pressurePa: Long): Float {
-        if (pressurePa <= 0L) return 0f
-        val pressureRatio = pressurePa / P0_PA
+    fun pressureToAltitude(pressurePa: Long, qnhPa: Double = P0_PA): Float {
+        if (pressurePa <= 0L || qnhPa <= 0.0) return 0f
+        val pressureRatio = pressurePa / qnhPa
         return (BARO_SCALE * (1.0 - pressureRatio.pow(BARO_EXPONENT))).toFloat()
+    }
+
+    /**
+     * Calculates the QNH (sea-level equivalent pressure in Pascals) given a known
+     * altitude in meters (e.g. from GPS) and current atmospheric pressure in Pascals.
+     *
+     * Inverting the ISA barometric formula:
+     * P0 = P / (1 - h / 44330)^(1 / 0.190263)
+     *
+     * @param pressurePa Measured atmospheric pressure in Pascals.
+     * @param gpsAltitudeM Ground/takeoff altitude in meters from GPS.
+     * @return Calibrated sea-level pressure (QNH) in Pascals, or [P0_PA] if inputs are invalid.
+     */
+    fun calculateQnh(pressurePa: Long, gpsAltitudeM: Float): Double {
+        if (pressurePa <= 0L) return P0_PA
+        val term = 1.0 - (gpsAltitudeM / BARO_SCALE)
+        if (term <= 0.0) return P0_PA
+        val invExponent = 1.0 / BARO_EXPONENT
+        return pressurePa / term.pow(invExponent)
     }
 
     /**

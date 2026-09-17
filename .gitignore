@@ -1,0 +1,22 @@
+# Built application files
+*.apk
+*.aar
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Gradle build cache & outputs
+.gradle/
+build/
+app/build/
+**/build/
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+local.properties
+.DS_Store
+
+# Antigravity IDE configuration
+.antigravity/

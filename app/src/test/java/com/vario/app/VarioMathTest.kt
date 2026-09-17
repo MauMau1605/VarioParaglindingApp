@@ -100,4 +100,41 @@ class VarioMathTest {
         assertEquals(400.0, VarioMath.sinkFrequency(0.0f))
         assertEquals(200.0, VarioMath.sinkFrequency(-15.0f))
     }
+
+    @Test
+    fun calculateQnh_seaLevel_returnsStandardP0() {
+        val qnh = VarioMath.calculateQnh(101325L, 0.0f)
+        assertWithin(101325.0, qnh, 0.5)
+    }
+
+    @Test
+    fun calculateQnh_calibratesBarometer_altitudeMatchesGps() {
+        // Takeoff at 1450m elevation with local pressure 86000 Pa
+        val groundAlt = 1450.0f
+        val groundPressure = 86000L
+
+        val qnh = VarioMath.calculateQnh(groundPressure, groundAlt)
+        val computedAlt = VarioMath.pressureToAltitude(groundPressure, qnh)
+
+        assertWithin(groundAlt, computedAlt, 0.01f)
+    }
+
+    @Test
+    fun calculateQnh_highAltitudeTakeoff_calibratesAccurately() {
+        // High alpine takeoff at 2800m elevation with local pressure 72000 Pa
+        val groundAlt = 2800.0f
+        val groundPressure = 72000L
+
+        val qnh = VarioMath.calculateQnh(groundPressure, groundAlt)
+        val computedAlt = VarioMath.pressureToAltitude(groundPressure, qnh)
+
+        assertWithin(groundAlt, computedAlt, 0.01f)
+    }
+
+    @Test
+    fun calculateQnh_invalidInputs_returnsStandardP0() {
+        assertEquals(VarioMath.P0_PA, VarioMath.calculateQnh(0L, 1000f))
+        assertEquals(VarioMath.P0_PA, VarioMath.calculateQnh(-100L, 1000f))
+        assertEquals(VarioMath.P0_PA, VarioMath.calculateQnh(101325L, 50000f)) // above troposphere limit
+    }
 }
