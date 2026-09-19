@@ -4,6 +4,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.Process
+import android.util.Log
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -58,6 +59,22 @@ class VarioAudioEngine {
     @Volatile
     var isMuted: Boolean = false
 
+    /**
+     * When true, a flight session is active. When false, the app is in pre-flight
+     * standby or landed, and audio output is suppressed (silence emitted) unless
+     * currently running an explicit diagnostic test tone.
+     */
+    @Volatile
+    var isFlightActive: Boolean = false
+
+    // ── Test tone override ───────────────────────────────────────────────────
+
+    @Volatile
+    private var isTestingTone: Boolean = false
+
+    @Volatile
+    private var testToneVz: Float = 0f
+
     // ── Pre-allocated resources ──────────────────────────────────────────────
 
     /** PCM sample buffer — allocated once, reused every write cycle. */
@@ -97,34 +114,68 @@ class VarioAudioEngine {
             BUFFER_SIZE * 2
         }
 
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_GAME)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(SAMPLE_RATE)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(trackBufferSize)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
-            .build()
+        try {
+            val track = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_GAME)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(SAMPLE_RATE)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(trackBufferSize)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                .build()
 
-        audioTrack = track
-        running = true
-        track.play()
+            if (track.state != AudioTrack.STATE_INITIALIZED) {
+                Log.e("VarioAudioEngine", "AudioTrack failed to initialize (state=${track.state})")
+                track.release()
+                return
+            }
 
-        audioThread = Thread({
-            // Elevate to URGENT_AUDIO to get real-time scheduling priority
-            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
-            audioLoop(track)
-        }, "VarioAudio").also { it.start() }
+            audioTrack = track
+            running = true
+            track.play()
+
+            audioThread = Thread({
+                // Elevate to URGENT_AUDIO to get real-time scheduling priority
+                Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+                audioLoop(track)
+            }, "VarioAudio").also { it.start() }
+        } catch (e: Throwable) {
+            Log.e("VarioAudioEngine", "Exception starting AudioTrack", e)
+        }
+    }
+
+    /**
+     * Start playing an artificial test tone corresponding to the specified [vz].
+     * Allows validating audio playback and speaker output in diagnostics mode.
+     */
+    fun testTone(vz: Float) {
+        testToneVz = vz
+        isTestingTone = true
+        if (!running) {
+            try {
+                start()
+            } catch (e: Throwable) {
+                Log.e("VarioAudioEngine", "Cannot start AudioTrack for test tone", e)
+            }
+        }
+    }
+
+    /**
+     * Stop playing the artificial test tone and return to flight audio.
+     */
+    fun stopTestTone() {
+        isTestingTone = false
+        testToneVz = 0f
     }
 
     /**
@@ -132,6 +183,8 @@ class VarioAudioEngine {
      */
     fun stop() {
         running = false
+        isTestingTone = false
+        testToneVz = 0f
         audioThread?.join(1000)
         audioThread = null
         audioTrack?.stop()
@@ -162,13 +215,14 @@ class VarioAudioEngine {
      * Exposed as internal for unit testing without starting an [AudioTrack].
      */
     internal fun generateBuffer(vz: Float, outBuffer: ShortArray) {
-        if (isMuted) {
+        val effectiveVz = if (isTestingTone) testToneVz else vz
+        if ((!isFlightActive || isMuted) && !isTestingTone) {
             fillSilence(outBuffer)
             return
         }
         when {
-            vz >= VarioMath.VZ_CLIMB_THRESHOLD -> fillClimbTone(vz, outBuffer)
-            vz <= VarioMath.VZ_SINK_THRESHOLD -> fillSinkTone(vz, outBuffer)
+            effectiveVz >= VarioMath.VZ_CLIMB_THRESHOLD -> fillClimbTone(effectiveVz, outBuffer)
+            effectiveVz <= VarioMath.VZ_SINK_THRESHOLD -> fillSinkTone(effectiveVz, outBuffer)
             else -> fillSilence(outBuffer)
         }
     }

@@ -32,7 +32,7 @@ class Lk8ex1ParserTest {
     @Test
     fun parseNominalSentence_extractsCorrectValues() {
         // $LK8EX1,pressure,altitude,vario,temp,batt*checksum\r\n
-        val sentence = "\$LK8EX1,101325,99999,150,220,999,*32\r\n"
+        val sentence = "\$LK8EX1,101325,99999,150,220,999,*13\r\n"
         val bytes = sentence.toByteArray(Charsets.US_ASCII)
 
         parser.parseBytes(bytes, bytes.size)
@@ -134,7 +134,8 @@ class Lk8ex1ParserTest {
 
     @Test
     fun parsingLoop_zeroAllocationsAcross10000Packets() {
-        val sentence = "\$LK8EX1,101325,99999,150,220,999,*32\r\n".toByteArray(Charsets.US_ASCII)
+        // LK8EX1 XOR checksum for 'LK8EX1,101325,99999,150,220,999,' is 0x13
+        val sentence = "\$LK8EX1,101325,99999,150,220,999,*13\r\n".toByteArray(Charsets.US_ASCII)
 
         // Warm up JIT
         repeat(1_000) {
@@ -156,6 +157,115 @@ class Lk8ex1ParserTest {
 
         assertEquals(11000, sentenceCount)
         assertEquals(150L, lastVario)
+        assertEquals(0L, parser.errorCount, "Valid sentences must not trigger errorCount")
         assertTrue(delta < 100_000, "Heap growth detected ($delta bytes) during parsing loop!")
     }
+
+    @Test
+    fun corruptedHeader_incrementsErrorCount() {
+        val badSentence = "\$LK8BAD,101325,99999,150,220,999,*00\r\n".toByteArray(Charsets.US_ASCII)
+        val initialErrors = parser.errorCount
+        parser.parseBytes(badSentence, badSentence.size)
+        assertTrue(parser.errorCount > initialErrors, "Corrupted header should increment errorCount")
+    }
+
+    @Test
+    fun rawSentence_capturedCorrectly() {
+        val sentenceStr = "\$LK8EX1,101325,99999,150,220,999,*3F\r\n"
+        val bytes = sentenceStr.toByteArray(Charsets.US_ASCII)
+        parser.parseBytes(bytes, bytes.size)
+
+        val captured = parser.getLastRawSentence()
+        assertTrue(captured.startsWith("\$LK8EX1,101325,99999,150,220,999"))
+    }
+
+    @Test
+    fun parsePositiveSignVario_extractsPositiveValue() {
+        val sentence = "\$LK8EX1,101325,99999,+120,220,999,*00\r\n"
+        val bytes = sentence.toByteArray(Charsets.US_ASCII)
+        parser.parseBytes(bytes, bytes.size)
+
+        assertEquals(1, sentenceCount)
+        assertEquals(101325L, lastPressure)
+        assertEquals(99999L, lastAltitude)
+        assertEquals(120L, lastVario)
+    }
+
+    @Test
+    fun parseLeadingAndTrailingWhitespace_extractsCorrectValues() {
+        val sentence = "\$LK8EX1,  101325 , 99999 ,  +150 , 220 , 999 ,*00\r\n"
+        val bytes = sentence.toByteArray(Charsets.US_ASCII)
+        parser.parseBytes(bytes, bytes.size)
+
+        assertEquals(1, sentenceCount)
+        assertEquals(101325L, lastPressure)
+        assertEquals(99999L, lastAltitude)
+        assertEquals(150L, lastVario)
+    }
+
+    @Test
+    fun parseDecimalPressureAndAltitude_extractsIntegerPortion() {
+        val sentence = "\$LK8EX1,1013.25,540.80,+215,22.5,999,*00\r\n"
+        val bytes = sentence.toByteArray(Charsets.US_ASCII)
+        parser.parseBytes(bytes, bytes.size)
+
+        assertEquals(1, sentenceCount)
+        assertEquals(1013L, lastPressure)
+        assertEquals(540L, lastAltitude)
+        assertEquals(215L, lastVario)
+    }
+
+    @Test
+    fun parseNegativeWithDecimals_extractsSignedInteger() {
+        val sentence = "\$LK8EX1,95000,540.2,-350.5,180,999,*00\r\n"
+        val bytes = sentence.toByteArray(Charsets.US_ASCII)
+        parser.parseBytes(bytes, bytes.size)
+
+        assertEquals(1, sentenceCount)
+        assertEquals(95000L, lastPressure)
+        assertEquals(540L, lastAltitude)
+        assertEquals(-350L, lastVario)
+    }
+
+    @Test
+    fun parseCombinedSpacesDecimalsAndSigns_withStrictChecksum() {
+        // Calculate XOR checksum for string: LK8EX1, 1013.25, 99999, +120, 220, 999
+        val payload = "LK8EX1, 1013.25, 99999, +120, 220, 999"
+        var xor = 0
+        for (c in payload) {
+            xor = xor xor c.code
+        }
+        val hex = String.format("%02X", xor)
+        val sentence = "\$$payload*$hex\r\n"
+
+        parser.requireStrictChecksum = true
+        val bytes = sentence.toByteArray(Charsets.US_ASCII)
+        parser.parseBytes(bytes, bytes.size)
+
+        assertEquals(1, sentenceCount)
+        assertEquals(1013L, lastPressure)
+        assertEquals(99999L, lastAltitude)
+        assertEquals(120L, lastVario)
+        assertEquals(1L, parser.validFramesCount)
+        assertEquals(0L, parser.errorCount)
+    }
+
+    @Test
+    fun duplicateDecimalPoint_triggersErrorCount() {
+        val initialErrors = parser.errorCount
+        val badSentence = "\$LK8EX1,10.13.25,99999,150,220,999,*00\r\n".toByteArray(Charsets.US_ASCII)
+        parser.parseBytes(badSentence, badSentence.size)
+        assertTrue(parser.errorCount > initialErrors, "Duplicate decimal points should trigger errorCount")
+    }
+
+    @Test
+    fun parserError_emitsDiagnosticLog() {
+        DebugLogger.clear()
+        val badSentence = "\$LK8BAD,101325,99999,150,220,999,*00\r\n".toByteArray(Charsets.US_ASCII)
+        parser.parseBytes(badSentence, badSentence.size)
+
+        val logs = DebugLogger.getLogs()
+        assertTrue(logs.any { it.contains("Lk8ex1Parser: Parser error in state HEADER at byte 'B' (0x42)") })
+    }
 }
+

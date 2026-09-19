@@ -14,7 +14,19 @@ class VarioAudioEngineTest {
     @BeforeTest
     fun setUp() {
         engine = VarioAudioEngine()
+        engine.isFlightActive = true
         engine.resetPhaseAndBeep()
+    }
+
+    @Test
+    fun inactiveFlight_fillsBufferWithPureSilenceEvenWithClimbVz() {
+        engine.isFlightActive = false
+        testBuffer.fill(42.toShort())
+        engine.generateBuffer(3.0f, testBuffer)
+
+        for (sample in testBuffer) {
+            assertEquals(0, sample.toInt())
+        }
     }
 
     @Test
@@ -119,4 +131,29 @@ class VarioAudioEngineTest {
 
         assertTrue(delta < 100_000, "Heap growth detected ($delta bytes) during synthesis loop!")
     }
+
+    @Test
+    fun testTone_playsToneEvenWhenMuted() {
+        engine.isMuted = true
+        engine.testTone(2.5f)
+
+        val climbBuffer = ShortArray(16000)
+        engine.generateBuffer(0f, climbBuffer) // vz parameter is 0, but testTone is 2.5f
+
+        var hasSound = false
+        for (sample in climbBuffer) {
+            if (sample.toInt() != 0) {
+                hasSound = true
+                break
+            }
+        }
+        assertTrue(hasSound, "testTone should override mute and produce sound")
+
+        engine.stopTestTone()
+        engine.generateBuffer(0f, climbBuffer)
+        for (sample in climbBuffer) {
+            assertEquals(0, sample.toInt())
+        }
+    }
 }
+

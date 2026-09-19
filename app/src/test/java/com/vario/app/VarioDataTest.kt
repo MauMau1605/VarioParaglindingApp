@@ -65,4 +65,90 @@ class VarioDataTest {
         assertEquals(5.7245, customData.longitude)
         assertEquals(1205f, customData.gpsAltitudeM)
     }
+
+    @Test
+    fun sensorModeAndUsbFields_defaultAndCustomValues() {
+        val defaultData = VarioData()
+        assertEquals(false, defaultData.isUsbConnected)
+        assertEquals(false, defaultData.isUsbScanning)
+        assertEquals(SensorMode.GPS_ONLY, defaultData.sensorMode)
+        assertEquals(null, defaultData.usbDeviceName)
+
+        val customData = VarioData(
+            isUsbConnected = true,
+            isUsbScanning = false,
+            sensorMode = SensorMode.BARO_AND_GPS,
+            usbDeviceName = "SAMD21 Vario Dongle"
+        )
+        assertEquals(true, customData.isUsbConnected)
+        assertEquals(false, customData.isUsbScanning)
+        assertEquals(SensorMode.BARO_AND_GPS, customData.sensorMode)
+        assertEquals("SAMD21 Vario Dongle", customData.usbDeviceName)
+
+        val scanningData = defaultData.copy(isUsbScanning = true)
+        assertEquals(true, scanningData.isUsbScanning)
+        assertEquals(false, scanningData.isUsbConnected)
+    }
+
+    @Test
+    fun sensorModeEnum_containsExpectedValues() {
+        val values = SensorMode.values()
+        assertEquals(2, values.size)
+        assertEquals(SensorMode.BARO_AND_GPS, SensorMode.valueOf("BARO_AND_GPS"))
+        assertEquals(SensorMode.GPS_ONLY, SensorMode.valueOf("GPS_ONLY"))
+    }
+
+    @Test
+    fun debugDiagnosticsFields_defaultsAndCustomValues() {
+        val defaultData = VarioData()
+        assertEquals(0f, defaultData.gpsAccuracyM)
+        assertEquals(0f, defaultData.gpsVerticalAccuracyM)
+        assertEquals(-1f, defaultData.lastGpsFixAgeSec)
+        assertEquals(false, defaultData.isGpsAvailable)
+        assertEquals(false, defaultData.usbPermissionGranted)
+        assertEquals(false, defaultData.usbPortOpen)
+        assertEquals(115200, defaultData.currentBaudRate)
+        assertEquals(0, defaultData.usbVid)
+        assertEquals(0, defaultData.usbPid)
+        assertEquals(0L, defaultData.totalBytesRead)
+        assertEquals(0L, defaultData.validFramesCount)
+        assertEquals(0L, defaultData.crcErrorsCount)
+        assertEquals("", defaultData.lastRawSentence)
+        assertEquals(0L, defaultData.lastRawPressurePa)
+        assertEquals(0L, defaultData.lastRawVarioCmS)
+
+        val customData = defaultData.copy(
+            gpsAccuracyM = 3.2f,
+            gpsVerticalAccuracyM = 4.5f,
+            lastGpsFixAgeSec = 0.5f,
+            isGpsAvailable = true,
+            usbPermissionGranted = true,
+            usbPortOpen = true,
+            currentBaudRate = 57600,
+            usbVid = 0x1A86,
+            usbPid = 0x7523,
+            totalBytesRead = 4096L,
+            validFramesCount = 120L,
+            crcErrorsCount = 2L,
+            lastRawSentence = "\$LK8EX1,101325,99999,150,220,999,*32\r\n",
+            lastRawPressurePa = 101325L,
+            lastRawVarioCmS = 150L
+        )
+        assertEquals(3.2f, customData.gpsAccuracyM)
+        assertEquals(4.5f, customData.gpsVerticalAccuracyM)
+        assertEquals(0.5f, customData.lastGpsFixAgeSec)
+        assertEquals(true, customData.isGpsAvailable)
+        assertEquals(true, customData.usbPermissionGranted)
+        assertEquals(true, customData.usbPortOpen)
+        assertEquals(57600, customData.currentBaudRate)
+        assertEquals(0x1A86, customData.usbVid)
+        assertEquals(0x7523, customData.usbPid)
+        assertEquals(4096L, customData.totalBytesRead)
+        assertEquals(120L, customData.validFramesCount)
+        assertEquals(2L, customData.crcErrorsCount)
+        assertEquals("\$LK8EX1,101325,99999,150,220,999,*32\r\n", customData.lastRawSentence)
+        assertEquals(101325L, customData.lastRawPressurePa)
+        assertEquals(150L, customData.lastRawVarioCmS)
+    }
 }
+

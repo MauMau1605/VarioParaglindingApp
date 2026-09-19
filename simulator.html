@@ -693,7 +693,7 @@
                     <span>Vertical Speed (Vz)</span>
                     <span class="val" id="sliderVzVal">+0.0 m/s</span>
                 </div>
-                <input type="range" id="sliderVz" min="-8.0" max="6.0" step="0.1" value="0.0" oninput="onVzChange(this.value)">
+                <input type="range" id="sliderVz" min="-10.0" max="10.0" step="0.1" value="0.0" oninput="onVzChange(this.value)">
             </div>
 
             <!-- Presets -->
@@ -766,6 +766,9 @@
         let currentAlt = 1420;
         let maxAltitudeM = 1420;
         let distanceDecoKm = 0.0;
+        let lastAltVal = 1420;
+        let lastAltTime = 0;
+        let altDecayTimeout = null;
 
         // ── Audio Engine (Web Audio API) matching VarioAudioEngine.kt ──────────
         let audioCtx = null;
@@ -805,7 +808,10 @@
                 flightDurationSec = 0;
                 maxAltitudeM = currentAlt;
                 distanceDecoKm = 0.0;
+                lastAltVal = currentAlt;
+                lastAltTime = 0;
                 document.getElementById('dispPlafond').textContent = maxAltitudeM;
+                document.getElementById('dispDistDeco').textContent = "0,0";
 
                 document.getElementById('btnMainAction').textContent = 'Arrêter le vol';
                 document.getElementById('btnMainAction').classList.add('stop-mode');
@@ -818,12 +824,13 @@
 
                 clearInterval(flightTimerInterval);
                 flightTimerInterval = setInterval(() => {
+                    if (!isFlightActive) return;
                     flightDurationSec++;
                     const mins = String(Math.floor(flightDurationSec / 60)).padStart(2, '0');
                     const secs = String(flightDurationSec % 60).padStart(2, '0');
                     document.getElementById('simFlightTimer').textContent = `${mins}:${secs}`;
                     
-                    // Simulate progressive distance increase in flight
+                    // Simulate progressive distance increase only during active flight
                     distanceDecoKm += 0.01;
                     document.getElementById('dispDistDeco').textContent = distanceDecoKm.toFixed(1).replace('.', ',');
                 }, 1000);
@@ -832,7 +839,18 @@
             } else {
                 // Stop Flight
                 isFlightActive = false;
-                clearInterval(flightTimerInterval);
+                if (flightTimerInterval) {
+                    clearInterval(flightTimerInterval);
+                    flightTimerInterval = null;
+                }
+
+                if (altDecayTimeout) {
+                    clearTimeout(altDecayTimeout);
+                    altDecayTimeout = null;
+                }
+                lastAltTime = 0;
+                currentVz = 0.0;
+                document.getElementById('sliderVz').value = "0.0";
 
                 document.getElementById('btnMainAction').textContent = 'Démarrer le vol';
                 document.getElementById('btnMainAction').classList.remove('stop-mode');
@@ -840,6 +858,7 @@
                 document.getElementById('dispFlightStatus').classList.remove('flying');
                 document.getElementById('simFlightTimer').classList.remove('active');
 
+                updateUI();
                 silenceAudio();
                 updateTelemetry();
             }
@@ -1005,6 +1024,12 @@
 
         // ── Telemetry & Display Update ────────────────────────────────────────
         function onVzChange(val) {
+            if (altDecayTimeout) {
+                clearTimeout(altDecayTimeout);
+                altDecayTimeout = null;
+            }
+            lastAltTime = 0;
+            lastAltVal = currentAlt;
             currentVz = parseFloat(val);
             updateUI();
             updateAudioEngine();
@@ -1012,12 +1037,55 @@
         }
 
         function onAltChange(val) {
-            currentAlt = parseInt(val, 10);
+            const newAlt = parseInt(val, 10);
+            const now = Date.now();
+
+            if (lastAltTime > 0) {
+                let dtSec = (now - lastAltTime) / 1000.0;
+                if (dtSec > 0.8) {
+                    // Pause in dragging: assume responsive user gesture
+                    dtSec = 0.25;
+                }
+                if (dtSec >= 0.01) {
+                    const dAlt = newAlt - lastAltVal;
+                    const rawVz = dAlt / dtSec;
+                    const clampedVz = Math.min(10.0, Math.max(-10.0, rawVz));
+                    currentVz = Math.round(clampedVz * 10) / 10;
+                    document.getElementById('sliderVz').value = currentVz.toFixed(1);
+                }
+            } else {
+                // First event of dragging
+                const dAlt = newAlt - lastAltVal;
+                const initialVz = dAlt >= 0 ? 2.0 : -2.0;
+                currentVz = initialVz;
+                document.getElementById('sliderVz').value = currentVz.toFixed(1);
+            }
+
+            lastAltVal = newAlt;
+            lastAltTime = now;
+            currentAlt = newAlt;
+
             if (currentAlt > maxAltitudeM) {
                 maxAltitudeM = currentAlt;
             }
+
             updateUI();
+            updateAudioEngine();
             emitLk8ex1();
+
+            // Set decay timeout to return Vz to 0.0 after user stops dragging (1.3s)
+            if (altDecayTimeout) {
+                clearTimeout(altDecayTimeout);
+            }
+            altDecayTimeout = setTimeout(() => {
+                currentVz = 0.0;
+                document.getElementById('sliderVz').value = "0.0";
+                updateUI();
+                updateAudioEngine();
+                emitLk8ex1();
+                lastAltTime = 0;
+                altDecayTimeout = null;
+            }, 1300);
         }
 
         function setPreset(vz) {

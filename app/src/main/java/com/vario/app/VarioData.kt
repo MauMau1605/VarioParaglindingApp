@@ -1,6 +1,14 @@
 package com.vario.app
 
 /**
+ * Operating mode of the variometer sensors.
+ */
+enum class SensorMode {
+    BARO_AND_GPS,
+    GPS_ONLY
+}
+
+/**
  * Immutable data class representing the variometer state.
  * Exposed via [StateFlow] from [VarioService] to the UI layer.
  *
@@ -20,6 +28,23 @@ package com.vario.app
  * @property flightDurationSec Elapsed flight time in seconds.
  * @property maxAltitudeM Maximum altitude (ceiling) reached during this flight.
  * @property isMuted Whether the variometer beeper audio is muted.
+ * @property isUsbConnected Whether the USB sensor module is connected.
+ * @property isUsbScanning Whether the service is actively scanning for a USB connection (30s timeout).
+ * @property sensorMode Current sensor operating mode ([SensorMode.BARO_AND_GPS] or [SensorMode.GPS_ONLY]).
+ * @property usbDeviceName Description/name of connected USB device, or null if disconnected.
+ * @property gpsAccuracyM Estimated horizontal GPS accuracy in meters.
+ * @property gpsVerticalAccuracyM Estimated vertical GPS accuracy in meters.
+ * @property lastGpsFixAgeSec Time in seconds since the last valid GPS fix, or -1f if never fixed.
+ * @property isGpsAvailable Whether the GPS hardware is actively available and reporting locations.
+ * @property usbPermissionGranted Whether USB device permission has been granted by the user.
+ * @property usbPortOpen Whether the USB serial port is currently open and communicating.
+ * @property currentBaudRate Configured serial baud rate (e.g. 115200).
+ * @property usbVid USB Vendor ID of the connected hardware.
+ * @property usbPid USB Product ID of the connected hardware.
+ * @property totalBytesRead Total count of raw bytes read from the USB interface.
+ * @property validFramesCount Count of successfully parsed LK8EX1 frames.
+ * @property crcErrorsCount Count of checksum mismatches or malformed frames.
+ * @property lastRawSentence Most recently received raw LK8EX1 sentence string.
  */
 data class VarioData(
     val altitudeM: Float = 0f,
@@ -34,5 +59,24 @@ data class VarioData(
     val isFlightActive: Boolean = false,
     val flightDurationSec: Long = 0L,
     val maxAltitudeM: Float = 0f,
-    val isMuted: Boolean = false
+    val isMuted: Boolean = false,
+    val isUsbConnected: Boolean = false,
+    val isUsbScanning: Boolean = false,
+    val sensorMode: SensorMode = SensorMode.GPS_ONLY,
+    val usbDeviceName: String? = null,
+    val gpsAccuracyM: Float = 0f,
+    val gpsVerticalAccuracyM: Float = 0f,
+    val lastGpsFixAgeSec: Float = -1f,
+    val isGpsAvailable: Boolean = false,
+    val usbPermissionGranted: Boolean = false,
+    val usbPortOpen: Boolean = false,
+    val currentBaudRate: Int = 115200,
+    val usbVid: Int = 0,
+    val usbPid: Int = 0,
+    val totalBytesRead: Long = 0L,
+    val validFramesCount: Long = 0L,
+    val crcErrorsCount: Long = 0L,
+    val lastRawSentence: String = "",
+    val lastRawPressurePa: Long = 0L,
+    val lastRawVarioCmS: Long = 0L
 )

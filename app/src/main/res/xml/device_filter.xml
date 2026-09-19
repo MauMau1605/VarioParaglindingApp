@@ -1,7 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- CH340 / WCH (VID 0x1A86 = 6790) -->
+    <usb-device vendor-id="6790" />
+
+    <!-- Silicon Labs CP210x (VID 0x10C4 = 4292) -->
+    <usb-device vendor-id="4292" />
+
+    <!-- FTDI (VID 0x0403 = 1027) -->
+    <usb-device vendor-id="1027" />
+
+    <!-- Prolific PL2303 (VID 0x067B = 1659) -->
+    <usb-device vendor-id="1659" />
+
     <!-- Arduino / Microchip SAMD21 native USB (VID 0x2341 = 9025) -->
     <usb-device vendor-id="9025" />
+
+    <!-- Raspberry Pi Pico (VID 0x2E8A = 11914) -->
+    <usb-device vendor-id="11914" />
+
+    <!-- Espressif ESP32-S2/S3 (VID 0x303A = 12346) -->
+    <usb-device vendor-id="12346" />
 
     <!-- Generic CDC ACM class — matches any USB-to-serial adapter -->
     <usb-device class="2" subclass="2" protocol="1" />

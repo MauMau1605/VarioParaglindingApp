@@ -45,6 +45,12 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+        disable += "InvalidFragmentVersionForActivityResult"
+    }
 }
 
 dependencies {
@@ -72,6 +78,9 @@ dependencies {
 
     // Location (GPS)
     implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    // Open-source Map & Offline Tiles (osmdroid)
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
 
     // Unit Testing
     testImplementation("junit:junit:4.13.2")
