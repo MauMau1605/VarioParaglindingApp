@@ -278,6 +278,39 @@ private fun createScrubberIcon(context: Context): android.graphics.drawable.Draw
 }
 
 /**
+ * Generates an icon for Hike / Fly mode transition waypoints.
+ * isHike = true -> Emerald Green with 'R' (Rando / Montée)
+ * isHike = false -> Sky Blue with 'V' (Vol / Décollage)
+ */
+private fun createHikeWaypointIcon(context: Context, isHike: Boolean): android.graphics.drawable.Drawable {
+    val sizePx = 54
+    val bitmap = android.graphics.Bitmap.createBitmap(sizePx, sizePx, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // Outer glow halo
+    val haloColor = if (isHike) AndroidColor.argb(90, 34, 197, 94) else AndroidColor.argb(90, 56, 189, 248)
+    paint.color = haloColor
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f, paint)
+
+    // Inner circle
+    val circleColor = if (isHike) AndroidColor.rgb(22, 163, 74) else AndroidColor.rgb(2, 132, 199)
+    paint.color = circleColor
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2.8f, paint)
+
+    // Text letter
+    paint.color = AndroidColor.WHITE
+    paint.textSize = 22f
+    paint.isFakeBoldText = true
+    paint.textAlign = Paint.Align.CENTER
+    val text = if (isHike) "R" else "V"
+    val yPos = (sizePx / 2f - (paint.descent() + paint.ascent()) / 2f)
+    canvas.drawText(text, sizePx / 2f, yPos, paint)
+
+    return android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
+}
+
+/**
  * High-performance Map Tab for VarioAppli.
  *
  * Features:
@@ -318,7 +351,9 @@ fun MapScreen(
 
     // Map tracking & loaded tracks
     var loadedPastTrack by remember { mutableStateOf<List<TrackPoint>?>(null) }
+    var loadedPastTrackWaypoints by remember { mutableStateOf<List<GpxWaypoint>>(emptyList()) }
     var loadedPastTrackName by remember { mutableStateOf<String?>(null) }
+    var lastCenteredTrackName by remember { mutableStateOf<String?>(null) }
     var isFollowingPilot by remember { mutableStateOf(true) }
 
     val trackProfileData = remember(loadedPastTrack) {
@@ -340,6 +375,7 @@ fun MapScreen(
     var finishMarkerRef by remember { mutableStateOf<Marker?>(null) }
     var scrubberMarkerRef by remember { mutableStateOf<Marker?>(null) }
     val waypointMarkersRef = remember { mutableListOf<Marker>() }
+    val trackWaypointsMarkersRef = remember { mutableListOf<Marker>() }
 
     val liveTrackPolyline = remember {
         Polyline().apply {
@@ -760,8 +796,55 @@ fun MapScreen(
                 if (pastPts != null && pastPts.isNotEmpty()) {
                     val pastGeoPts = pastPts.map { GeoPoint(it.latitude, it.longitude) }
                     pastTrackPolyline.setPoints(pastGeoPts)
+
+                    // Auto-center map on track start if newly loaded
+                    if (loadedPastTrackName != null && loadedPastTrackName != lastCenteredTrackName) {
+                        lastCenteredTrackName = loadedPastTrackName
+                        isFollowingPilot = false
+                        val startPt = pastPts.first()
+                        val startGeo = GeoPoint(startPt.latitude, startPt.longitude)
+                        mapView.setExpectedCenter(startGeo)
+                        mapView.controller.setZoom(15.0)
+                        mapView.controller.animateTo(startGeo)
+                    }
                 } else {
                     pastTrackPolyline.setPoints(emptyList())
+                    if (loadedPastTrackName == null) {
+                        lastCenteredTrackName = null
+                    }
+                }
+
+                // Update track waypoints markers (for loaded past track or live active session)
+                val waypointsToRender = when {
+                    loadedPastTrack != null -> loadedPastTrackWaypoints
+                    varioData.isFlightActive -> GpxTrackManager.getCurrentWaypoints()
+                    else -> emptyList()
+                }
+
+                trackWaypointsMarkersRef.forEach { mapView.overlays.remove(it) }
+                trackWaypointsMarkersRef.clear()
+
+                for ((idx, wpt) in waypointsToRender.withIndex()) {
+                    val isHike = wpt.symbol == "Trailhead" || wpt.name.contains("Rando", ignoreCase = true)
+                    val isFly = wpt.symbol == "Paraglider" || wpt.name.contains("Vol", ignoreCase = true) || wpt.name.contains("Décol", ignoreCase = true)
+                    val isFinish = wpt.symbol == "Finish" || wpt.symbol == "Landing" || wpt.name.contains("Fin", ignoreCase = true) || wpt.name.contains("Atterri", ignoreCase = true)
+
+                    val iconDrawable = when {
+                        isHike -> createHikeWaypointIcon(context, isHike = true)
+                        isFly -> createHikeWaypointIcon(context, isHike = false)
+                        isFinish -> createFinishIcon(context)
+                        else -> createWaypointIcon(context, idx + 1)
+                    }
+
+                    val m = Marker(mapView).apply {
+                        position = GeoPoint(wpt.latitude, wpt.longitude)
+                        title = "${wpt.name} (${wpt.altitudeM.toInt()} m)"
+                        snippet = wpt.description
+                        icon = iconDrawable
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    }
+                    trackWaypointsMarkersRef.add(m)
+                    mapView.overlays.add(m)
                 }
 
                 // Update scrubber marker if scrubbing on profile graph
@@ -968,8 +1051,11 @@ fun MapScreen(
                             .clickable {
                                 loadedPastTrack = null
                                 loadedPastTrackName = null
+                                loadedPastTrackWaypoints = emptyList()
+                                lastCenteredTrackName = null
                                 showTrackDetails = false
                                 scrubbedPointIndex = null
+                                isFollowingPilot = true
                                 mapViewRef?.invalidate()
                             }
                             .padding(4.dp)
@@ -1094,14 +1180,22 @@ fun MapScreen(
                 onDismiss = { showTracksSheet = false },
                 onSelectTrackToView = { file ->
                     val points = GpxTrackManager.loadTrackPoints(file)
+                    val waypoints = GpxTrackManager.loadTrackWaypoints(file)
                     loadedPastTrack = points
+                    loadedPastTrackWaypoints = waypoints
                     loadedPastTrackName = file.name
+                    lastCenteredTrackName = file.name
                     showTrackDetails = true
                     scrubbedPointIndex = null
+                    isFollowingPilot = false
                     if (points.isNotEmpty()) {
-                        mapViewRef?.controller?.animateTo(
-                            GeoPoint(points.first().latitude, points.first().longitude)
-                        )
+                        val startPt = points.first()
+                        val startGeo = GeoPoint(startPt.latitude, startPt.longitude)
+                        mapViewRef?.let { mv ->
+                            mv.setExpectedCenter(startGeo)
+                            mv.controller.setZoom(15.0)
+                            mv.controller.animateTo(startGeo)
+                        }
                     }
                     showTracksSheet = false
                 }

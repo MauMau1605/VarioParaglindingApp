@@ -368,4 +368,9 @@ class VarioServiceCompanionTest {
         VarioService.setFlightMode(FlightMode.NORMAL)
         assertEquals(FlightMode.NORMAL, VarioService.dataFlow.value.flightMode)
     }
+
+    @Test
+    fun extraSaveTrackConstant_hasExpectedValue() {
+        assertEquals("com.vario.app.EXTRA_SAVE_TRACK", VarioService.EXTRA_SAVE_TRACK)
+    }
 }

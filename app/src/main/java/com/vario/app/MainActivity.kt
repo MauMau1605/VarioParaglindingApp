@@ -33,12 +33,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import java.util.Locale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -156,7 +158,7 @@ class MainActivity : ComponentActivity() {
                     VarioScreen(
                         varioData = varioData,
                         onStartFlight = { startFlight() },
-                        onStopFlight = { stopFlight() },
+                        onStopFlight = { saveTrack -> stopFlight(saveTrack) },
                         onSetFlightMode = { setFlightMode(it) },
                         onProceedToFly = { proceedToFly() },
                         onToggleMute = { toggleMute() },
@@ -274,9 +276,10 @@ class MainActivity : ComponentActivity() {
         startForegroundService(intent)
     }
 
-    private fun stopFlight() {
+    private fun stopFlight(saveTrack: Boolean = true) {
         val intent = Intent(this, VarioService::class.java).apply {
             action = VarioService.ACTION_STOP_FLIGHT
+            putExtra(VarioService.EXTRA_SAVE_TRACK, saveTrack)
         }
         startService(intent)
     }
@@ -328,7 +331,7 @@ private fun VarioCockpitTheme(content: @Composable () -> Unit) {
 private fun VarioScreen(
     varioData: VarioData,
     onStartFlight: () -> Unit,
-    onStopFlight: () -> Unit,
+    onStopFlight: (Boolean) -> Unit,
     onSetFlightMode: (FlightMode) -> Unit,
     onProceedToFly: () -> Unit,
     onToggleMute: () -> Unit,
@@ -342,6 +345,7 @@ private fun VarioScreen(
     val context = LocalContext.current
     var showDebugModal by remember { mutableStateOf(false) }
     var showHikeTransitionDialog by remember { mutableStateOf(false) }
+    var showSaveConfirmDialog by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -694,7 +698,7 @@ private fun VarioScreen(
                             if (varioData.sessionPhase == SessionPhase.HIKING) {
                                 showHikeTransitionDialog = true
                             } else {
-                                onStopFlight()
+                                showSaveConfirmDialog = true
                             }
                         } else {
                             handleStartClick()
@@ -797,7 +801,7 @@ private fun VarioScreen(
                         Button(
                             onClick = {
                                 showHikeTransitionDialog = false
-                                onStopFlight()
+                                showSaveConfirmDialog = true
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
                         ) {
@@ -814,6 +818,86 @@ private fun VarioScreen(
                 containerColor = Color(0xFF1E293B),
                 titleContentColor = Color.White,
                 textContentColor = Color(0xFFE2E8F0)
+            )
+        }
+
+        // ── Save Track Confirmation Dialog ──────────────────────────────
+        if (showSaveConfirmDialog) {
+            val isHike = varioData.flightMode == FlightMode.HIKE_AND_FLY && varioData.sessionPhase == SessionPhase.HIKING
+            val sessionTitle = if (isHike) "l'ascension" else "le vol"
+            val durationText = formatDuration(varioData.flightDurationSec)
+
+            AlertDialog(
+                onDismissRequest = { showSaveConfirmDialog = false },
+                containerColor = Color(0xFF1E293B),
+                titleContentColor = Color.White,
+                textContentColor = Color(0xFFCBD5E1),
+                title = {
+                    Text(
+                        text = "Arrêter $sessionTitle ?",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Souhaitez-vous enregistrer la trace GPX de cette session ?",
+                            fontSize = 14.sp,
+                            color = Color(0xFFE2E8F0)
+                        )
+                        Surface(
+                            color = Color(0xFF0F172A),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text("⏱️ Durée : $durationText", fontSize = 13.sp, color = Color(0xFF94A3B8))
+                                if (isHike) {
+                                    Text("⛰️ D+ cumulé : +${varioData.elevationGainM.toInt()} m", fontSize = 13.sp, color = Color(0xFF4ADE80), fontWeight = FontWeight.SemiBold)
+                                } else {
+                                    Text("⛰️ Plafond max : ${varioData.maxAltitudeM.toInt()} m", fontSize = 13.sp, color = Color(0xFF38BDF8))
+                                }
+                                if (varioData.totalDistanceTraveledM > 0f) {
+                                    Text("📍 Distance : ${String.format(Locale.US, "%.2f", varioData.totalDistanceTraveledM / 1000f)} km", fontSize = 13.sp, color = Color(0xFF94A3B8))
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showSaveConfirmDialog = false
+                            onStopFlight(true)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E))
+                    ) {
+                        Text("💾 Enregistrer", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                showSaveConfirmDialog = false
+                                onStopFlight(false)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                        ) {
+                            Text("🗑️ Ne pas enregistrer", color = Color.White)
+                        }
+                        Button(
+                            onClick = { showSaveConfirmDialog = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155))
+                        ) {
+                            Text("Annuler", color = Color(0xFFE2E8F0))
+                        }
+                    }
+                }
             )
         }
 

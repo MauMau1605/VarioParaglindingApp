@@ -96,6 +96,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
         const val ACTION_SET_FLIGHT_MODE = "com.vario.app.ACTION_SET_FLIGHT_MODE"
         const val EXTRA_FLIGHT_MODE = "com.vario.app.EXTRA_FLIGHT_MODE"
         const val ACTION_PROCEED_TO_FLY = "com.vario.app.ACTION_PROCEED_TO_FLY"
+        const val EXTRA_SAVE_TRACK = "com.vario.app.EXTRA_SAVE_TRACK"
         const val USB_SCAN_TIMEOUT_SEC = 30
 
         val SUPPORTED_BAUD_RATES = intArrayOf(115200, 57600, 38400, 19200, 9600)
@@ -113,6 +114,17 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 instance?.flightMode = mode
                 _dataFlow.value = current.copy(flightMode = mode)
             }
+        }
+
+        /**
+         * Sends stop flight intent with option to persist or discard the GPX track.
+         */
+        fun stopFlight(context: Context, saveTrack: Boolean = true) {
+            val intent = Intent(context, VarioService::class.java).apply {
+                action = ACTION_STOP_FLIGHT
+                putExtra(EXTRA_SAVE_TRACK, saveTrack)
+            }
+            context.startService(intent)
         }
 
         /**
@@ -512,19 +524,47 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
 
                 acquireWakeLock()
 
+                val currentLoc = lastKnownLocation
+                val currentAltM = if (currentAlt > 0f) currentAlt else (currentLoc?.altitude?.toFloat() ?: 0f)
+
                 if (flightMode == FlightMode.HIKE_AND_FLY) {
                     sessionPhase = SessionPhase.HIKING
                     // Crucial: Vz audio beep is stopped during the hike ascent
                     audioEngine?.isFlightActive = false
                     audioEngine?.currentVz = 0f
+                    if (currentLoc != null) {
+                        GpxTrackManager.addWaypoint(
+                            GpxWaypoint(
+                                latitude = currentLoc.latitude,
+                                longitude = currentLoc.longitude,
+                                altitudeM = currentAltM,
+                                name = "Départ Rando",
+                                description = "Début montée Hike & Fly (${currentAltM.toInt()} m)",
+                                timeMs = System.currentTimeMillis(),
+                                symbol = "Trailhead"
+                            )
+                        )
+                    }
                     DebugLogger.log(TAG, "Hike & Fly started: Hiking ascent phase (audio muted, initial alt: ${maxAltitudeM}m)", DebugLogger.Level.INFO)
                 } else {
                     sessionPhase = SessionPhase.FLYING
                     audioEngine?.isFlightActive = true
+                    if (currentLoc != null) {
+                        GpxTrackManager.addWaypoint(
+                            GpxWaypoint(
+                                latitude = currentLoc.latitude,
+                                longitude = currentLoc.longitude,
+                                altitudeM = currentAltM,
+                                name = "Décollage",
+                                description = "Début de vol (${currentAltM.toInt()} m)",
+                                timeMs = System.currentTimeMillis(),
+                                symbol = "Paraglider"
+                            )
+                        )
+                    }
                     DebugLogger.log(TAG, "Flight session started (initial alt: ${maxAltitudeM}m)", DebugLogger.Level.INFO)
                 }
 
-                val currentLoc = lastKnownLocation
                 val dist = if (currentLoc != null && takeoffLocation != null) currentLoc.distanceTo(takeoffLocation!!) else 0f
                 _dataFlow.value = _dataFlow.value.copy(
                     isFlightActive = true,
@@ -548,16 +588,33 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                     smoothedBaroVz = 0f
                     audioEngine?.isFlightActive = true // Un-mutes and starts variometer audio!
                     val currentLoc = lastKnownLocation
+                    val alt = if (_dataFlow.value.altitudeM > 0f) _dataFlow.value.altitudeM else (currentLoc?.altitude?.toFloat() ?: 0f)
+                    if (currentLoc != null) {
+                        GpxTrackManager.addWaypoint(
+                            GpxWaypoint(
+                                latitude = currentLoc.latitude,
+                                longitude = currentLoc.longitude,
+                                altitudeM = alt,
+                                name = "Décollage / Vol",
+                                description = "Transition Hike & Fly vers Vol (${alt.toInt()} m)",
+                                timeMs = System.currentTimeMillis(),
+                                symbol = "Paraglider"
+                            )
+                        )
+                    }
                     val dist = if (currentLoc != null && takeoffLocation != null) currentLoc.distanceTo(takeoffLocation!!) else 0f
                     _dataFlow.value = _dataFlow.value.copy(
                         sessionPhase = SessionPhase.FLYING,
                         distanceToTakeoffM = dist
                     )
-                    DebugLogger.log(TAG, "Hike & Fly: switched to Fly mode (takeoff locked at ${lastKnownLocation?.altitude}m)", DebugLogger.Level.INFO)
+                    DebugLogger.log(TAG, "Hike & Fly: switched to Fly mode (takeoff locked at ${alt}m)", DebugLogger.Level.INFO)
                     updateNotification()
                 }
             }
             ACTION_STOP_FLIGHT -> {
+                val shouldSave = intent.getBooleanExtra(EXTRA_SAVE_TRACK, true)
+                val wasHike = sessionPhase == SessionPhase.HIKING
+
                 isFlightActive = false
                 sessionPhase = SessionPhase.IDLE
                 audioEngine?.isFlightActive = false
@@ -573,19 +630,42 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 val maxAlt = maxAltitudeM
                 val dist = totalDistanceTraveledM
                 val startMs = flightStartTimeMs
-                serviceScope?.launch(Dispatchers.IO) {
-                    val file = GpxTrackManager.saveCurrentTrack(
-                        context = this@VarioService,
-                        startTimeMs = startMs,
-                        durationSec = duration,
-                        maxAltitudeM = maxAlt,
-                        totalDistanceM = dist
-                    )
-                    if (file != null) {
-                        DebugLogger.log(TAG, "GPX track automatically saved: ${file.name}", DebugLogger.Level.INFO)
+
+                if (shouldSave) {
+                    val currentLoc = lastKnownLocation
+                    if (currentLoc != null) {
+                        val alt = if (_dataFlow.value.altitudeM > 0f) _dataFlow.value.altitudeM else currentLoc.altitude.toFloat()
+                        val name = if (wasHike) "Fin Rando" else "Atterrissage"
+                        val desc = if (wasHike) "Fin de l'ascension (${alt.toInt()} m)" else "Atterrissage vol (${alt.toInt()} m)"
+                        GpxTrackManager.addWaypoint(
+                            GpxWaypoint(
+                                latitude = currentLoc.latitude,
+                                longitude = currentLoc.longitude,
+                                altitudeM = alt,
+                                name = name,
+                                description = desc,
+                                timeMs = System.currentTimeMillis(),
+                                symbol = if (wasHike) "Finish" else "Landing"
+                            )
+                        )
                     }
+                    serviceScope?.launch(Dispatchers.IO) {
+                        val file = GpxTrackManager.saveCurrentTrack(
+                            context = this@VarioService,
+                            startTimeMs = startMs,
+                            durationSec = duration,
+                            maxAltitudeM = maxAlt,
+                            totalDistanceM = dist
+                        )
+                        if (file != null) {
+                            DebugLogger.log(TAG, "GPX track saved: ${file.name}", DebugLogger.Level.INFO)
+                        }
+                    }
+                    DebugLogger.log(TAG, "Flight session stopped and GPX track saved", DebugLogger.Level.INFO)
+                } else {
+                    GpxTrackManager.clearCurrentTrack()
+                    DebugLogger.log(TAG, "Flight session stopped without saving GPX track (discarded by user)", DebugLogger.Level.INFO)
                 }
-                DebugLogger.log(TAG, "Flight session stopped", DebugLogger.Level.INFO)
                 updateNotification()
             }
             ACTION_TOGGLE_MUTE -> {
@@ -1048,7 +1128,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                     altitudeM = locAlt,
                     vzMs = effectiveVz,
                     speedKmh = speedKmh,
-                    timeMs = System.currentTimeMillis()
+                    timeMs = System.currentTimeMillis(),
+                    phase = sessionPhase.name
                 )
             )
         }

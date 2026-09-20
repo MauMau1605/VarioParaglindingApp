@@ -155,8 +155,11 @@ flowchart LR
    - Mount your phone onto your flight deck or slip it into your harness pocket. With `PARTIAL_WAKE_LOCK`, audio continues playing uninterrupted even when the screen is turned off.
 4. **Landing & Session Wrap-up:**
    - After landing, tap **"Arrêter le vol" (Stop Flight)**.
-   - Audio is muted and flight statistics (peak ceiling, flight time, distance from launch) are finalized.
-   - The flight track is automatically saved to the device's storage in standard **GPX format** (`/Documents/VarioAppli/Tracks/`).
+   - Audio is muted immediately.
+   - **Save Confirmation Dialog:** A confirmation dialog appears presenting your session summary (flight duration, peak ceiling, and total distance). Choose:
+     - **"💾 Enregistrer" (Save Track):** Saves the track to device storage in standard GPX format (`/Documents/VarioAppli/Tracks/`).
+     - **"🗑️ Ne pas enregistrer" (Discard):** Discards the flight track without saving to storage (preventing short tests or unwanted logs from cluttering your files).
+     - **"Annuler" (Cancel):** Resumes flight recording if tapped accidentally.
 
 ---
 
@@ -171,19 +174,25 @@ VarioAppli includes a specialized **Hike & Fly** mode tailored for pilots who hi
 
 ### 2. Ascent Phase (Montée)
 - Tap the button when starting your ascent on foot, skis, or snowshoes.
+- **Automatic Waypoint:** An initial waypoint **"Départ Rando"** is marked at your starting position with current altitude.
 - **Muted Variometer:** Audio beeping is automatically silenced so you don't get false climb/sink chirps while walking.
 - **Elevation Gain ($D^+$) Display:** The primary central instrument replaces instantaneous $V_z$ with your cumulative elevation gain ($D^+$ in meters) since the start of the hike.
 - **Reference Altitudes:** Displays starting altitude, current barometric altitude, and total ground distance covered.
-- Continuous GPX recording logs your exact hiking trail.
+- Continuous GPX recording logs your exact hiking trail tagged with hiking phase metadata.
 
 ### 3. Transitioning to Flight Mode (Passage au Vol)
 When you reach the summit / takeoff launch site and prepare your wing:
 1. Tap the main action button (now labeled **"TERMINER MONTÉE / VOLER"**).
 2. A transition dialog appears with three choices:
-   - **"Passer en mode Vol" (Proceed to Flight):** Un-mutes the acoustic variometer, locks the current summit coordinates as your official takeoff location, switches the primary display back to the $V_z$ climb/sink ladder, and keeps recording your flight in the **same continuous GPX track**.
-   - **"Terminer l'enregistrement" (End Session):** Immediately finishes and saves your hike track (e.g. if conditions are unsuitable to fly and you walk down).
+   - **"Passer en mode Vol" (Proceed to Flight):**
+     - Places a distinct summit waypoint **"Décollage / Vol"** on the track and map.
+     - Un-mutes the acoustic variometer.
+     - Locks the current summit coordinates as your official takeoff location.
+     - Switches the primary display back to the $V_z$ climb/sink ladder.
+     - Continues recording your flight in the **same continuous GPX track**.
+   - **"Terminer l'enregistrement" (End Session):** Prompts you to confirm whether or not to save the hike track (e.g. if conditions are unsuitable to fly and you walk down).
    - **"Continuer la montée" (Continue Hike):** Dismisses the dialog and resumes ascent tracking.
-3. Once in Flight mode, land as normal and tap **"Arrêter le vol"** to finalize the full multi-phase log.
+3. Once in Flight mode, land as normal and tap **"Arrêter le vol"**. The confirmation dialog appears before saving the multi-phase GPX track with all transition waypoints included.
 
 ---
 
@@ -191,11 +200,17 @@ When you reach the summit / takeoff launch site and prepare your wing:
 
 When viewing previously saved tracks or loading external GPX tracks on the **CARTE (MAP)** tab:
 
-### 1. Track Summary Banner & Details Button
-- When a track is loaded, a floating header card displays the track filename and point count.
-- Tap the **"[📈 Détails]"** toggle button on this card to open the **Flight & Track Profile Card**.
+### 1. Automatic Map Centering on Track Start
+- As soon as a track is selected from the file picker, the map **automatically centers and zooms (level 15)** onto the track's starting point (trailhead or takeoff fix).
+- Live pilot auto-tracking is temporarily suspended while you inspect the track, preventing the map from snapping back to your current location.
+- Embedded transition waypoints (e.g., *Départ Rando*, *Décollage / Vol*, *Atterrissage*) are displayed with distinct visual markers on the map.
 
-### 2. Track Summary Statistics
+### 2. Track Summary Banner & Details Button
+- A floating header card displays the track filename, point count, and waypoint count.
+- Tap the **"[📈 Détails]"** toggle button on this card to open the **Flight & Track Profile Card**.
+- Tap **"[✕]"** to close the track view and restore normal map centering on your live position.
+
+### 3. Track Summary Statistics
 The profile card displays essential statistics calculated from the track:
 - **Total Distance:** Total 3D ground distance covered (km).
 - **Duration:** Total elapsed time (`HH:MM:SS`).
@@ -204,7 +219,7 @@ The profile card displays essential statistics calculated from the track:
 - **Max Speed & Average Speed:** Peak ground speed and overall speed.
 - **Thermal Lift & Sink Extremes:** Maximum positive climb rate and deepest sink.
 
-### 3. Interactive Elevation Profile & Finger Scrubber
+### 4. Interactive Elevation Profile & Finger Scrubber
 - The card renders an elevation vs. distance profile graph with a smooth gradient fill and min/max altitude bounds.
 - **Finger Scrubbing:** Touch or slide your finger horizontally anywhere across the profile graph:
   - A vertical crosshair and floating indicator badge display the exact altitude, distance, and $V_z$ at that location.

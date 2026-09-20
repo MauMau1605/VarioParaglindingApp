@@ -26,7 +26,21 @@ data class TrackPoint(
     val altitudeM: Float,
     val vzMs: Float = 0f,
     val speedKmh: Float = 0f,
-    val timeMs: Long = System.currentTimeMillis()
+    val timeMs: Long = System.currentTimeMillis(),
+    val phase: String = ""
+)
+
+/**
+ * Waypoint or marker embedded into GPX track (mode switch, takeoff, landing, turnpoint).
+ */
+data class GpxWaypoint(
+    val latitude: Double,
+    val longitude: Double,
+    val altitudeM: Float = 0f,
+    val name: String,
+    val description: String = "",
+    val timeMs: Long = System.currentTimeMillis(),
+    val symbol: String = ""
 )
 
 /**
@@ -83,6 +97,7 @@ object GpxTrackManager {
     private const val TRACK_DIR_NAME = "tracks"
 
     private val currentPoints = Collections.synchronizedList(mutableListOf<TrackPoint>())
+    private val currentWaypoints = Collections.synchronizedList(mutableListOf<GpxWaypoint>())
     private val isoDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
         timeZone = TimeZone.getTimeZone("UTC")
     }
@@ -96,10 +111,18 @@ object GpxTrackManager {
     }
 
     /**
-     * Clears all in-memory points for the current flight track.
+     * Appends a waypoint / marker (e.g. mode change, takeoff, summit) to the active track.
+     */
+    fun addWaypoint(waypoint: GpxWaypoint) {
+        currentWaypoints.add(waypoint)
+    }
+
+    /**
+     * Clears all in-memory points and waypoints for the current flight track.
      */
     fun clearCurrentTrack() {
         currentPoints.clear()
+        currentWaypoints.clear()
     }
 
     /**
@@ -108,6 +131,15 @@ object GpxTrackManager {
     fun getCurrentTrackPoints(): List<TrackPoint> {
         synchronized(currentPoints) {
             return ArrayList(currentPoints)
+        }
+    }
+
+    /**
+     * Snapshot copy of current active waypoints.
+     */
+    fun getCurrentWaypoints(): List<GpxWaypoint> {
+        synchronized(currentWaypoints) {
+            return ArrayList(currentWaypoints)
         }
     }
 
@@ -155,12 +187,41 @@ object GpxTrackManager {
                 writer.write("    <time>$startIso</time>\n")
                 writer.write("    <desc>Duree: ${durationSec}s | Plafond: ${maxAltitudeM.toInt()}m | Distance: ${totalDistanceM.toInt()}m</desc>\n")
                 writer.write("  </metadata>\n")
+
+                // Write Waypoints (mode switch markers, takeoff, summit, landing)
+                val waypoints = getCurrentWaypoints()
+                for (wpt in waypoints) {
+                    val wptIso = isoDateFormat.format(Date(if (wpt.timeMs > 0) wpt.timeMs else System.currentTimeMillis()))
+                    val descStr = if (wpt.description.isNotEmpty()) "    <desc>${escapeXml(wpt.description)}</desc>\n" else ""
+                    val symStr = if (wpt.symbol.isNotEmpty()) "    <sym>${escapeXml(wpt.symbol)}</sym>\n" else ""
+                    writer.write(
+                        String.format(
+                            Locale.US,
+                            "  <wpt lat=\"%.6f\" lon=\"%.6f\">\n" +
+                            "    <ele>%.1f</ele>\n" +
+                            "    <time>%s</time>\n" +
+                            "    <name>%s</name>\n" +
+                            "%s" +
+                            "%s" +
+                            "  </wpt>\n",
+                            wpt.latitude,
+                            wpt.longitude,
+                            wpt.altitudeM,
+                            wptIso,
+                            escapeXml(wpt.name),
+                            descStr,
+                            symStr
+                        )
+                    )
+                }
+
                 writer.write("  <trk>\n")
                 writer.write("    <name>Track $dateStr</name>\n")
                 writer.write("    <trkseg>\n")
 
                 for (pt in points) {
                     val ptIso = isoDateFormat.format(Date(pt.timeMs))
+                    val phaseExt = if (pt.phase.isNotEmpty()) "          <phase>${escapeXml(pt.phase)}</phase>\n" else ""
                     writer.write(
                         String.format(
                             Locale.US,
@@ -170,6 +231,7 @@ object GpxTrackManager {
                             "        <extensions>\n" +
                             "          <vz>%.2f</vz>\n" +
                             "          <speed>%.1f</speed>\n" +
+                            "%s" +
                             "        </extensions>\n" +
                             "      </trkpt>\n",
                             pt.latitude,
@@ -177,7 +239,8 @@ object GpxTrackManager {
                             pt.altitudeM,
                             ptIso,
                             pt.vzMs,
-                            pt.speedKmh
+                            pt.speedKmh,
+                            phaseExt
                         )
                     )
                 }
@@ -187,12 +250,23 @@ object GpxTrackManager {
                 writer.write("</gpx>\n")
             }
 
-            Log.i(TAG, "Saved GPX track with ${points.size} points to ${file.absolutePath}")
+            Log.i(TAG, "Saved GPX track with ${points.size} points and ${getCurrentWaypoints().size} waypoints to ${file.absolutePath}")
             return file
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save GPX track", e)
             return null
         }
+    }
+
+    /**
+     * Escapes XML special characters for GPX tag safety.
+     */
+    fun escapeXml(text: String): String {
+        return text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
     }
 
     /**
@@ -237,13 +311,14 @@ object GpxTrackManager {
                         XmlPullParser.TEXT -> {
                             val text = parser.text.trim()
                             if (inEle) {
-                                text.toFloatOrNull()?.let { ele ->
-                                    if (ele > maxAlt) maxAlt = ele
+                                text.toFloatOrNull()?.let { alt ->
+                                    if (alt > maxAlt) maxAlt = alt
                                 }
                             } else if (inTime && pointCount <= 1) {
                                 try {
                                     isoDateFormat.parse(text)?.let { d ->
                                         firstTimeMs = d.time
+                                        lastTimeMs = d.time
                                     }
                                 } catch (_: Exception) {}
                             } else if (inTime) {
@@ -290,9 +365,8 @@ object GpxTrackManager {
         if (!file.exists()) return result
 
         try {
+            val parser = createXmlPullParser() ?: return parsePointsFallback(file)
             file.inputStream().use { stream ->
-                val factory = XmlPullParserFactory.newInstance()
-                val parser = factory.newPullParser()
                 parser.setInput(stream, "UTF-8")
 
                 var eventType = parser.eventType
@@ -301,6 +375,7 @@ object GpxTrackManager {
                 var curEle = 0f
                 var curVz = 0f
                 var curSpeed = 0f
+                var curPhase = ""
                 var curTime = 0L
 
                 var currentTag = ""
@@ -315,6 +390,7 @@ object GpxTrackManager {
                                 curEle = 0f
                                 curVz = 0f
                                 curSpeed = 0f
+                                curPhase = ""
                                 curTime = 0L
                             }
                         }
@@ -324,6 +400,7 @@ object GpxTrackManager {
                                 "ele" -> curEle = text.toFloatOrNull() ?: curEle
                                 "vz" -> curVz = text.toFloatOrNull() ?: curVz
                                 "speed" -> curSpeed = text.toFloatOrNull() ?: curSpeed
+                                "phase" -> curPhase = text
                                 "time" -> {
                                     try {
                                         isoDateFormat.parse(text)?.let { d ->
@@ -342,7 +419,8 @@ object GpxTrackManager {
                                         altitudeM = curEle,
                                         vzMs = curVz,
                                         speedKmh = curSpeed,
-                                        timeMs = curTime
+                                        timeMs = curTime,
+                                        phase = curPhase
                                     )
                                 )
                             }
@@ -353,7 +431,193 @@ object GpxTrackManager {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading track points from ${file.name}", e)
+            Log.e(TAG, "Error loading track points from ${file.name}, trying fallback", e)
+            return parsePointsFallback(file)
+        }
+        return result
+    }
+
+    private fun createXmlPullParser(): XmlPullParser? {
+        return try {
+            XmlPullParserFactory.newInstance()?.newPullParser()
+        } catch (_: Throwable) {
+            null
+        } ?: try {
+            Class.forName("org.kxml2.io.KXmlParser").getDeclaredConstructor().newInstance() as? XmlPullParser
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * Parses all waypoints (<wpt>) embedded into a GPX file (mode transitions, takeoff, summit).
+     */
+    fun loadTrackWaypoints(file: File): List<GpxWaypoint> {
+        val result = mutableListOf<GpxWaypoint>()
+        if (!file.exists()) return result
+
+        try {
+            val parser = createXmlPullParser() ?: return parseWaypointsFallback(file)
+            file.inputStream().use { stream ->
+                parser.setInput(stream, "UTF-8")
+
+                var eventType = parser.eventType
+                var curLat = 0.0
+                var curLon = 0.0
+                var curEle = 0f
+                var curTime = 0L
+                var curName = ""
+                var curDesc = ""
+                var curSym = ""
+
+                var currentTag = ""
+                var inWpt = false
+
+                while (eventType != XmlPullParser.END_DOCUMENT) {
+                    when (eventType) {
+                        XmlPullParser.START_TAG -> {
+                            currentTag = parser.name
+                            if (parser.name == "wpt") {
+                                inWpt = true
+                                curLat = parser.getAttributeValue(null, "lat")?.toDoubleOrNull() ?: 0.0
+                                curLon = parser.getAttributeValue(null, "lon")?.toDoubleOrNull() ?: 0.0
+                                curEle = 0f
+                                curTime = 0L
+                                curName = ""
+                                curDesc = ""
+                                curSym = ""
+                            }
+                        }
+                        XmlPullParser.TEXT -> {
+                            val text = parser.text.trim()
+                            if (inWpt && text.isNotEmpty()) {
+                                when (currentTag) {
+                                    "ele" -> curEle = text.toFloatOrNull() ?: curEle
+                                    "name" -> curName = text
+                                    "desc" -> curDesc = text
+                                    "sym" -> curSym = text
+                                    "time" -> {
+                                        try {
+                                            isoDateFormat.parse(text)?.let { d ->
+                                                curTime = d.time
+                                            }
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                            }
+                        }
+                        XmlPullParser.END_TAG -> {
+                            if (parser.name == "wpt") {
+                                inWpt = false
+                                if (curLat != 0.0 || curLon != 0.0) {
+                                    result.add(
+                                        GpxWaypoint(
+                                            latitude = curLat,
+                                            longitude = curLon,
+                                            altitudeM = curEle,
+                                            name = if (curName.isNotEmpty()) curName else "Point",
+                                            description = curDesc,
+                                            timeMs = curTime,
+                                            symbol = curSym
+                                        )
+                                    )
+                                }
+                            }
+                            currentTag = ""
+                        }
+                    }
+                    eventType = parser.next()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading track waypoints from ${file.name}, trying fallback", e)
+            return parseWaypointsFallback(file)
+        }
+        return result
+    }
+
+    private fun parseWaypointsFallback(file: File): List<GpxWaypoint> {
+        val result = mutableListOf<GpxWaypoint>()
+        try {
+            val dbFactory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+            val dBuilder = dbFactory.newDocumentBuilder()
+            val doc = dBuilder.parse(file)
+            doc.documentElement.normalize()
+            val nList = doc.getElementsByTagName("wpt")
+            for (i in 0 until nList.length) {
+                val node = nList.item(i)
+                if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE) {
+                    val elem = node as org.w3c.dom.Element
+                    val lat = elem.getAttribute("lat").toDoubleOrNull() ?: 0.0
+                    val lon = elem.getAttribute("lon").toDoubleOrNull() ?: 0.0
+                    val ele = elem.getElementsByTagName("ele").item(0)?.textContent?.toFloatOrNull() ?: 0f
+                    val name = elem.getElementsByTagName("name").item(0)?.textContent ?: "Point"
+                    val desc = elem.getElementsByTagName("desc").item(0)?.textContent ?: ""
+                    val sym = elem.getElementsByTagName("sym").item(0)?.textContent ?: ""
+                    var timeMs = 0L
+                    elem.getElementsByTagName("time").item(0)?.textContent?.let { timeStr ->
+                        try {
+                            isoDateFormat.parse(timeStr)?.let { timeMs = it.time }
+                        } catch (_: Exception) {}
+                    }
+                    result.add(
+                        GpxWaypoint(
+                            latitude = lat,
+                            longitude = lon,
+                            altitudeM = ele,
+                            name = name,
+                            description = desc,
+                            timeMs = timeMs,
+                            symbol = sym
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Fallback XML waypoint parse error", e)
+        }
+        return result
+    }
+
+    private fun parsePointsFallback(file: File): List<TrackPoint> {
+        val result = mutableListOf<TrackPoint>()
+        try {
+            val dbFactory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+            val dBuilder = dbFactory.newDocumentBuilder()
+            val doc = dBuilder.parse(file)
+            doc.documentElement.normalize()
+            val nList = doc.getElementsByTagName("trkpt")
+            for (i in 0 until nList.length) {
+                val node = nList.item(i)
+                if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE) {
+                    val elem = node as org.w3c.dom.Element
+                    val lat = elem.getAttribute("lat").toDoubleOrNull() ?: 0.0
+                    val lon = elem.getAttribute("lon").toDoubleOrNull() ?: 0.0
+                    val ele = elem.getElementsByTagName("ele").item(0)?.textContent?.toFloatOrNull() ?: 0f
+                    val vz = elem.getElementsByTagName("vz").item(0)?.textContent?.toFloatOrNull() ?: 0f
+                    val speed = elem.getElementsByTagName("speed").item(0)?.textContent?.toFloatOrNull() ?: 0f
+                    val phase = elem.getElementsByTagName("phase").item(0)?.textContent ?: ""
+                    var timeMs = 0L
+                    elem.getElementsByTagName("time").item(0)?.textContent?.let { timeStr ->
+                        try {
+                            isoDateFormat.parse(timeStr)?.let { timeMs = it.time }
+                        } catch (_: Exception) {}
+                    }
+                    result.add(
+                        TrackPoint(
+                            latitude = lat,
+                            longitude = lon,
+                            altitudeM = ele,
+                            vzMs = vz,
+                            speedKmh = speed,
+                            timeMs = timeMs,
+                            phase = phase
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Fallback XML trackpoint parse error", e)
         }
         return result
     }

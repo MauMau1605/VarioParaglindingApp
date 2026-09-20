@@ -331,5 +331,124 @@ class MapAndTrackTest {
         assertThat(profile.points[1].distanceM).isGreaterThan(900f)
         assertThat(profile.points[3].distanceM).isEqualTo(profile.totalDistanceM)
     }
+
+    @Test
+    fun testGpxTrackManagerWaypointsAddClearAndQuery() {
+        GpxTrackManager.clearCurrentTrack()
+        assertThat(GpxTrackManager.getCurrentWaypoints()).isEmpty()
+
+        val wp1 = GpxWaypoint(
+            latitude = 45.1885,
+            longitude = 5.7245,
+            altitudeM = 1250f,
+            name = "Départ Rando",
+            description = "Début montée",
+            symbol = "Trailhead"
+        )
+        val wp2 = GpxWaypoint(
+            latitude = 45.1950,
+            longitude = 5.7310,
+            altitudeM = 1850f,
+            name = "Décollage / Vol",
+            description = "Transition vers vol",
+            symbol = "Paraglider"
+        )
+
+        GpxTrackManager.addWaypoint(wp1)
+        GpxTrackManager.addWaypoint(wp2)
+
+        val waypoints = GpxTrackManager.getCurrentWaypoints()
+        assertThat(waypoints).hasSize(2)
+        assertThat(waypoints[0].name).isEqualTo("Départ Rando")
+        assertThat(waypoints[0].altitudeM).isEqualTo(1250f)
+        assertThat(waypoints[1].name).isEqualTo("Décollage / Vol")
+        assertThat(waypoints[1].symbol).isEqualTo("Paraglider")
+
+        GpxTrackManager.clearCurrentTrack()
+        assertThat(GpxTrackManager.getCurrentWaypoints()).isEmpty()
+        assertThat(GpxTrackManager.getCurrentTrackPoints()).isEmpty()
+    }
+
+    @Test
+    fun testGpxSerializationAndDeserializationWithWaypointsAndPhase() {
+        GpxTrackManager.clearCurrentTrack()
+
+        val wp1 = GpxWaypoint(
+            latitude = 45.200,
+            longitude = 5.700,
+            altitudeM = 1000f,
+            name = "Départ Rando",
+            description = "Début montée",
+            timeMs = 1000000L,
+            symbol = "Trailhead"
+        )
+        val wp2 = GpxWaypoint(
+            latitude = 45.210,
+            longitude = 5.710,
+            altitudeM = 1800f,
+            name = "Décollage / Vol",
+            description = "Transition vers vol",
+            timeMs = 1005000L,
+            symbol = "Paraglider"
+        )
+        GpxTrackManager.addWaypoint(wp1)
+        GpxTrackManager.addWaypoint(wp2)
+
+        val pt1 = TrackPoint(45.200, 5.700, 1000f, 0.5f, 5f, 1000000L, phase = "HIKING")
+        val pt2 = TrackPoint(45.210, 5.710, 1800f, 2.0f, 35f, 1005000L, phase = "FLYING")
+        GpxTrackManager.addPoint(pt1)
+        GpxTrackManager.addPoint(pt2)
+
+        // Save directly to a test file in tempDir
+        val gpxFile = File(tempDir, "test_hike_and_fly.gpx")
+        gpxFile.writeText(
+            buildString {
+                append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+                append("<gpx version=\"1.1\" creator=\"VarioAppli\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n")
+                append("  <metadata><name>Test Track</name></metadata>\n")
+                append("  <wpt lat=\"45.200000\" lon=\"5.700000\">\n")
+                append("    <ele>1000.0</ele>\n")
+                append("    <name>Départ Rando</name>\n")
+                append("    <desc>Début montée</desc>\n")
+                append("    <sym>Trailhead</sym>\n")
+                append("  </wpt>\n")
+                append("  <wpt lat=\"45.210000\" lon=\"5.710000\">\n")
+                append("    <ele>1800.0</ele>\n")
+                append("    <name>Décollage / Vol</name>\n")
+                append("    <desc>Transition vers vol</desc>\n")
+                append("    <sym>Paraglider</sym>\n")
+                append("  </wpt>\n")
+                append("  <trk><name>Track</name><trkseg>\n")
+                append("    <trkpt lat=\"45.200000\" lon=\"5.700000\">\n")
+                append("      <ele>1000.0</ele>\n")
+                append("      <extensions><phase>HIKING</phase></extensions>\n")
+                append("    </trkpt>\n")
+                append("    <trkpt lat=\"45.210000\" lon=\"5.710000\">\n")
+                append("      <ele>1800.0</ele>\n")
+                append("      <extensions><phase>FLYING</phase></extensions>\n")
+                append("    </trkpt>\n")
+                append("  </trkseg></trk>\n")
+                append("</gpx>\n")
+            }
+        )
+
+        // Test loading waypoints
+        val loadedWaypoints = GpxTrackManager.loadTrackWaypoints(gpxFile)
+        assertThat(loadedWaypoints).hasSize(2)
+        assertThat(loadedWaypoints[0].name).isEqualTo("Départ Rando")
+        assertThat(loadedWaypoints[0].altitudeM).isEqualTo(1000f)
+        assertThat(loadedWaypoints[0].symbol).isEqualTo("Trailhead")
+        assertThat(loadedWaypoints[1].name).isEqualTo("Décollage / Vol")
+        assertThat(loadedWaypoints[1].altitudeM).isEqualTo(1800f)
+        assertThat(loadedWaypoints[1].symbol).isEqualTo("Paraglider")
+
+        // Test loading points with phase
+        val loadedPoints = GpxTrackManager.loadTrackPoints(gpxFile)
+        assertThat(loadedPoints).hasSize(2)
+        assertThat(loadedPoints[0].phase).isEqualTo("HIKING")
+        assertThat(loadedPoints[1].phase).isEqualTo("FLYING")
+
+        GpxTrackManager.clearCurrentTrack()
+    }
 }
 

@@ -243,6 +243,14 @@ stateDiagram-v2
 
 ### 4. Flight Track & GPX Logger (`GpxTrackManager.kt`)
 - Records 1 Hz timestamped geographic points with barometric altitude and variometer readings.
+- **Mode & Phase Tagging:** Points carry session phase tags (`HIKING` vs `FLYING`) in `<trkpt><extensions><phase>...</phase></extensions>`.
+- **GPX Waypoints (`<wpt>`):** Automatically captures mode transition events as standard GPX waypoints:
+  - *Départ Rando:* Recorded at start of Hike & Fly session.
+  - *Décollage / Vol:* Recorded at the summit/takeoff transition when switching from hike to fly.
+  - *Fin Rando / Atterrissage:* Recorded upon landing or session end.
+  - Waypoints serialize with `<name>`, `<desc>`, `<time>`, `<sym>`, and `<ele>`, and render as tactical icons on the map.
+- **Track Selection & Camera Centering:** When a historical track is selected in `MapScreen.kt`, the map disables live pilot follow mode and smoothly pans + zooms (level 15.0) to the track's starting fix.
+- **Track Save Confirmation (`EXTRA_SAVE_TRACK`):** `VarioService.ACTION_STOP_FLIGHT` evaluates the `EXTRA_SAVE_TRACK` boolean passed from the UI confirmation dialog; if false, recorded points are discarded cleanly without disk I/O.
 - Emits standard GPX files exportable to XContest, Strava, or Google Earth.
 - Colors the map breadcrumb trail in real time (green for thermals/lift, orange/red for sink, grey for zero).
 
