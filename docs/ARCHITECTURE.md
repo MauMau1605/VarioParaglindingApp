@@ -262,7 +262,62 @@ stateDiagram-v2
 
 ---
 
-## 10. Automated Testing & Verification Strategy
+## 10. Hike & Fly Mode Architecture
+
+### Overview & Lifecycle Model
+VarioAppli includes a specialized **Hike & Fly** mode (`FlightMode.HIKE_AND_FLY`) allowing pilots to record continuous multi-sport sessions that encompass the uphill hike (approach, mountaineering, skinning) and the paragliding descent in a single GPX flight track:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Standby: IDLE Phase
+    Standby --> Hiking: ACTION_START_FLIGHT (Mode: HIKE_AND_FLY)
+    state Hiking {
+        [*] --> MuteAudio: audioEngine.isFlightActive = false
+        MuteAudio --> TrackAscent: Accumulate Elevation Gain (D+) & Distance
+        TrackAscent --> TrackAscent: Display D+ in place of Vz
+    }
+    Hiking --> Flying: ACTION_PROCEED_TO_FLY (Takeoff locked)
+    state Flying {
+        [*] --> UnmuteAudio: audioEngine.isFlightActive = true
+        UnmuteAudio --> FlightTelemetry: Standard Vz ladder, climb/sink beeps
+        FlightTelemetry --> FlightTelemetry: Continue same GPX track
+    }
+    Hiking --> Standby: Terminate Session
+    Flying --> Standby: Landed / Stop Flight
+```
+
+### Zero-Allocation Audio Suspension During Ascent
+During `SessionPhase.HIKING`:
+- `audioEngine?.isFlightActive` remains `false`.
+- The real-time audio thread (`VarioAudioEngine`) continues filling its pre-allocated `ShortArray(512)` buffer with pure digital silence (0s).
+- **Fast-Path Integrity:** Zero objects, lambdas, or threads are created or destroyed during phase transitions.
+
+### Cumulative Elevation Gain (D+) Filter (`computeElevationGain`)
+Barometric pressure sensor noise or altitude jitter (~0.1 to 0.5 m) can artificially inflate cumulative ascent over a long hike. To prevent false elevation accumulation, `VarioService.computeElevationGain` enforces a 1.0 m deadband threshold:
+- If $(Alt_{current} - Alt_{last}) \ge 1.0\text{ m}$, the delta is added to $D^+$ and $Alt_{last}$ updates to $Alt_{current}$.
+- If $Alt_{current} \le Alt_{last}$, $Alt_{last}$ ratchets downward to track descents without decrementing $D^+$.
+- Jitter where $|Alt_{current} - Alt_{last}| < 1.0\text{ m}$ is ignored.
+
+---
+
+## 11. GPX Track Profile & Interactive Map Scrubber
+
+### Track Profile Engine (`GpxTrackManager.kt`)
+When a GPX flight track is loaded or reviewed on the map, `GpxTrackManager.computeTrackProfile(points)` performs a single-pass traversal computing:
+- **`TrackProfilePoint` list:** Cumulative ground distance ($d_i = d_{i-1} + \text{haversine}(p_{i-1}, p_i)$), altitude, vertical speed, ground speed, and timestamp.
+- **`TrackProfileData` summary:** Total distance, duration, elevation extremes ($Alt_{min}, Alt_{max}$), cumulative climb ($D^+$) and descent ($D^-$), maximum and average speeds, and vertical speed extremes ($V_{z,\max}, V_{z,\min}$).
+
+### Interactive Profile Scrubber & Map Synchronization (`MapScreen.kt`)
+1. **Touch Gesture Tracking:** The elevation graph uses Compose `pointerInput` with `detectDragGestures` and `detectTapGestures` to capture touch coordinates $X_{touch} \in [0, W_{graph}]$.
+2. **Distance-to-Point Mapping:** The touch ratio $X / W$ maps linearly to cumulative distance $d_{scrub} = \text{ratio} \times d_{total}$. The nearest `TrackProfilePoint` is resolved in $O(\log N)$ or fast linear scan.
+3. **Real-Time Map Marker:** The resolved coordinate $(lat, lon)$ is immediately forwarded to an OsmDroid `Marker` (`scrubberMarker`) on the tactical map:
+   - Sets marker position to `GeoPoint(lat, lon)`.
+   - Smoothly pans the map camera via `mapView.controller.animateTo(geoPoint)`.
+   - Displays a floating pill with exact altitude, cumulative distance, and instantaneous $V_z$ directly above the pilot's touch finger.
+
+---
+
+## 12. Automated Testing & Verification Strategy
 
 The codebase contains a comprehensive unit test suite located in `app/src/test/java/com/vario/app/`:
 

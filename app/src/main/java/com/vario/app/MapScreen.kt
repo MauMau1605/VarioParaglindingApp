@@ -50,13 +50,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -241,6 +248,36 @@ private fun createFinishIcon(context: Context): android.graphics.drawable.Drawab
 }
 
 /**
+ * Generates an interactive scrubber beacon icon (pulsing amber/cyan target with center dot).
+ */
+private fun createScrubberIcon(context: Context): android.graphics.drawable.Drawable {
+    val sizePx = 64
+    val bitmap = android.graphics.Bitmap.createBitmap(sizePx, sizePx, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // Outer glow halo (Amber/Gold)
+    paint.color = AndroidColor.argb(130, 245, 158, 11)
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f, paint)
+
+    // Mid circle (Bright Cyan)
+    paint.color = AndroidColor.rgb(14, 165, 233)
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2.8f, paint)
+
+    // Inner bright white center dot
+    paint.color = AndroidColor.WHITE
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 5.5f, paint)
+
+    // Dark stroke border
+    paint.style = Paint.Style.STROKE
+    paint.strokeWidth = 3f
+    paint.color = AndroidColor.argb(200, 15, 23, 42)
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2.8f, paint)
+
+    return android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
+}
+
+/**
  * High-performance Map Tab for VarioAppli.
  *
  * Features:
@@ -284,6 +321,12 @@ fun MapScreen(
     var loadedPastTrackName by remember { mutableStateOf<String?>(null) }
     var isFollowingPilot by remember { mutableStateOf(true) }
 
+    val trackProfileData = remember(loadedPastTrack) {
+        loadedPastTrack?.let { GpxTrackManager.computeTrackProfile(it) }
+    }
+    var showTrackDetails by remember { mutableStateOf(false) }
+    var scrubbedPointIndex by remember { mutableStateOf<Int?>(null) }
+
     // Sheets
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showTracksSheet by remember { mutableStateOf(false) }
@@ -295,6 +338,7 @@ fun MapScreen(
     var targetMarkerRef by remember { mutableStateOf<Marker?>(null) }
     var startMarkerRef by remember { mutableStateOf<Marker?>(null) }
     var finishMarkerRef by remember { mutableStateOf<Marker?>(null) }
+    var scrubberMarkerRef by remember { mutableStateOf<Marker?>(null) }
     val waypointMarkersRef = remember { mutableListOf<Marker>() }
 
     val liveTrackPolyline = remember {
@@ -335,6 +379,9 @@ fun MapScreen(
         TerrainElevationProvider.addListener(elevationListener)
         onDispose {
             TerrainElevationProvider.removeListener(elevationListener)
+            scrubberMarkerRef?.let { marker ->
+                mapViewRef?.overlays?.remove(marker)
+            }
             mapViewRef?.onPause()
             mapViewRef?.onDetach()
         }
@@ -717,6 +764,31 @@ fun MapScreen(
                     pastTrackPolyline.setPoints(emptyList())
                 }
 
+                // Update scrubber marker if scrubbing on profile graph
+                val profile = trackProfileData
+                val sIndex = scrubbedPointIndex
+                if (showTrackDetails && profile != null && sIndex != null && sIndex in profile.points.indices) {
+                    val sPt = profile.points[sIndex]
+                    val sGeo = GeoPoint(sPt.latitude, sPt.longitude)
+                    var sMarker = scrubberMarkerRef
+                    if (sMarker == null) {
+                        sMarker = Marker(mapView).apply {
+                            icon = createScrubberIcon(context)
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        }
+                        scrubberMarkerRef = sMarker
+                    }
+                    sMarker.position = sGeo
+                    sMarker.title = "Alt: ${sPt.altitudeM.toInt()}m | Dist: ${String.format(Locale.US, "%.2f", sPt.distanceM / 1000f)}km"
+                    if (!mapView.overlays.contains(sMarker)) {
+                        mapView.overlays.add(sMarker)
+                    }
+                } else {
+                    scrubberMarkerRef?.let { marker ->
+                        mapView.overlays.remove(marker)
+                    }
+                }
+
                 mapView.invalidate()
             },
             modifier = Modifier.fillMaxSize()
@@ -849,7 +921,7 @@ fun MapScreen(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
                         text = "Trace : $loadedPastTrackName",
@@ -857,6 +929,35 @@ fun MapScreen(
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium
                     )
+
+                    // Small Details button
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (showTrackDetails) Color(0xFF0284C7) else Color(0xFF334155),
+                        border = BorderStroke(1.dp, if (showTrackDetails) Color(0xFF38BDF8) else Color(0xFF475569)),
+                        modifier = Modifier.clickable {
+                            showTrackDetails = !showTrackDetails
+                            if (!showTrackDetails) {
+                                scrubbedPointIndex = null
+                                mapViewRef?.invalidate()
+                            }
+                        }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(text = "📈", fontSize = 12.sp)
+                            Text(
+                                text = "Détails",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
                     Text(
                         text = "✕",
                         color = Color.White,
@@ -867,6 +968,9 @@ fun MapScreen(
                             .clickable {
                                 loadedPastTrack = null
                                 loadedPastTrackName = null
+                                showTrackDetails = false
+                                scrubbedPointIndex = null
+                                mapViewRef?.invalidate()
                             }
                             .padding(4.dp)
                     )
@@ -938,6 +1042,33 @@ fun MapScreen(
             )
         }
 
+        // ── GPX Track Profile & Finger Scrubber Card ────────────────────────
+        if (showTrackDetails && trackProfileData != null) {
+            TrackProfileCard(
+                profileData = trackProfileData,
+                scrubbedIndex = scrubbedPointIndex,
+                onScrub = { index ->
+                    scrubbedPointIndex = index
+                    mapViewRef?.invalidate()
+                },
+                onCenterOnPoint = { index ->
+                    val pt = trackProfileData.points.getOrNull(index)
+                    if (pt != null) {
+                        mapViewRef?.controller?.animateTo(GeoPoint(pt.latitude, pt.longitude))
+                    }
+                },
+                onClose = {
+                    showTrackDetails = false
+                    scrubbedPointIndex = null
+                    mapViewRef?.invalidate()
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+            )
+        }
+
         // ── Settings Bottom Sheet ────────────────────────────────────────────
         if (showSettingsSheet) {
             GlideSettingsBottomSheet(
@@ -965,6 +1096,8 @@ fun MapScreen(
                     val points = GpxTrackManager.loadTrackPoints(file)
                     loadedPastTrack = points
                     loadedPastTrackName = file.name
+                    showTrackDetails = true
+                    scrubbedPointIndex = null
                     if (points.isNotEmpty()) {
                         mapViewRef?.controller?.animateTo(
                             GeoPoint(points.first().latitude, points.first().longitude)
@@ -2231,6 +2364,344 @@ private fun TrackHistoryBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+// ── GPX Track Profile & Finger Scrubber Card ────────────────────────────────
+
+@Composable
+fun TrackProfileCard(
+    profileData: TrackProfileData,
+    scrubbedIndex: Int?,
+    onScrub: (Int) -> Unit,
+    onCenterOnPoint: (Int) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xF20F172A)),
+        border = BorderStroke(1.dp, Color(0xFF334155))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Header: Title, point count, center button, and close button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(text = "📈", fontSize = 16.sp)
+                    Text(
+                        text = "Profil du vol",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "(${profileData.points.size} pts)",
+                        fontSize = 12.sp,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (scrubbedIndex != null) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF0369A1),
+                            modifier = Modifier.clickable { onCenterOnPoint(scrubbedIndex) }
+                        ) {
+                            Text(
+                                text = "📍 Centrer",
+                                fontSize = 11.sp,
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "✕",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { onClose() }
+                            .padding(4.dp)
+                    )
+                }
+            }
+
+            // Summary stats chips row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val totalKm = profileData.totalDistanceM / 1000f
+                ProfileStatBadge("Distance", String.format(Locale.US, "%.1f km", totalKm), Color(0xFF38BDF8))
+                ProfileStatBadge("Dénivelé", "+${profileData.elevationGainM.toInt()}m / -${profileData.elevationLossM.toInt()}m", Color(0xFF4ADE80))
+                ProfileStatBadge("Altitude", "${profileData.minAltitudeM.toInt()}m – ${profileData.maxAltitudeM.toInt()}m", Color(0xFFFBBF24))
+                val durMin = profileData.durationSec / 60
+                val durSec = profileData.durationSec % 60
+                ProfileStatBadge("Durée", "${durMin}m ${durSec}s", Color(0xFFA78BFA))
+                if (profileData.maxSpeedKmh > 0f) {
+                    ProfileStatBadge("Vitesse max", "${profileData.maxSpeedKmh.toInt()} km/h", Color(0xFFF472B6))
+                }
+                if (profileData.maxClimbVz > 0f || profileData.maxSinkVz < 0f) {
+                    ProfileStatBadge("Vz max/min", "${formatVzLocal(profileData.maxClimbVz)} / ${formatVzLocal(profileData.maxSinkVz)}", Color(0xFF34D399))
+                }
+            }
+
+            // Interactive Elevation Graph with Finger Scrubbing
+            TrackElevationProfileGraph(
+                profileData = profileData,
+                scrubbedIndex = scrubbedIndex,
+                onScrub = onScrub,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(115.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun TrackElevationProfileGraph(
+    profileData: TrackProfileData,
+    scrubbedIndex: Int?,
+    onScrub: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val points = profileData.points
+    if (points.size < 2) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Text("Pas assez de points pour afficher le profil", color = Color(0xFF64748B), fontSize = 12.sp)
+        }
+        return
+    }
+
+    val totalDist = profileData.totalDistanceM.coerceAtLeast(1f)
+    val minAlt = profileData.minAltitudeM
+    val maxAlt = profileData.maxAltitudeM
+    val altRange = (maxAlt - minAlt).coerceAtLeast(10f)
+
+    // Helper to find closest point given an x coordinate in pixels
+    fun updateFromX(xPx: Float, widthPx: Float) {
+        if (widthPx <= 0f) return
+        val fraction = (xPx / widthPx).coerceIn(0f, 1f)
+        val targetDist = fraction * totalDist
+        var low = 0
+        var high = points.size - 1
+        var bestIndex = 0
+        var bestDiff = Float.MAX_VALUE
+        while (low <= high) {
+            val mid = (low + high) ushr 1
+            val p = points[mid]
+            val diff = kotlin.math.abs(p.distanceM - targetDist)
+            if (diff < bestDiff) {
+                bestDiff = diff
+                bestIndex = mid
+            }
+            if (p.distanceM < targetDist) {
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        onScrub(bestIndex)
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF090D14))
+            .pointerInput(profileData) {
+                detectTapGestures { offset ->
+                    updateFromX(offset.x, size.width.toFloat())
+                }
+            }
+            .pointerInput(profileData) {
+                detectDragGestures { change, _ ->
+                    change.consume()
+                    updateFromX(change.position.x, size.width.toFloat())
+                }
+            }
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+            val w = size.width
+            val h = size.height
+            val graphBottom = h - 16f
+            val graphTop = 18f
+            val graphH = (graphBottom - graphTop).coerceAtLeast(10f)
+
+            val textPaint = Paint().apply {
+                color = AndroidColor.argb(130, 148, 163, 184)
+                textSize = 22f
+                isAntiAlias = true
+            }
+
+            // High line
+            drawLine(
+                color = Color(0x22FFFFFF),
+                start = Offset(0f, graphTop),
+                end = Offset(w, graphTop),
+                strokeWidth = 1f
+            )
+            drawContext.canvas.nativeCanvas.drawText("${maxAlt.toInt()}m", 4f, graphTop + 16f, textPaint)
+
+            // Low line
+            drawLine(
+                color = Color(0x22FFFFFF),
+                start = Offset(0f, graphBottom),
+                end = Offset(w, graphBottom),
+                strokeWidth = 1f
+            )
+            drawContext.canvas.nativeCanvas.drawText("${minAlt.toInt()}m", 4f, graphBottom - 4f, textPaint)
+
+            // Construct elevation curve path
+            val linePath = Path()
+            val fillPath = Path()
+
+            val step = (points.size / 400).coerceAtLeast(1)
+
+            for (i in 0 until points.size step step) {
+                val pt = points[i]
+                val x = (pt.distanceM / totalDist) * w
+                val normAlt = ((pt.altitudeM - minAlt) / altRange).coerceIn(0f, 1f)
+                val y = graphBottom - (normAlt * graphH)
+
+                if (i == 0) {
+                    linePath.moveTo(x, y)
+                    fillPath.moveTo(x, graphBottom)
+                    fillPath.lineTo(x, y)
+                } else {
+                    linePath.lineTo(x, y)
+                    fillPath.lineTo(x, y)
+                }
+            }
+
+            // Ensure last point is connected
+            val lastPt = points.last()
+            val lastX = w
+            val lastNormAlt = ((lastPt.altitudeM - minAlt) / altRange).coerceIn(0f, 1f)
+            val lastY = graphBottom - (lastNormAlt * graphH)
+            linePath.lineTo(lastX, lastY)
+            fillPath.lineTo(lastX, lastY)
+            fillPath.lineTo(lastX, graphBottom)
+            fillPath.close()
+
+            // Draw translucent area fill below curve
+            drawPath(
+                path = fillPath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0x550EA5E9), Color(0x050EA5E9)),
+                    startY = graphTop,
+                    endY = graphBottom
+                )
+            )
+
+            // Draw profile curve
+            drawPath(
+                path = linePath,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color(0xFF38BDF8), Color(0xFFFBBF24))
+                ),
+                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+            )
+
+            // Draw interactive Scrubber indicator if finger active
+            if (scrubbedIndex != null && scrubbedIndex in points.indices) {
+                val sPt = points[scrubbedIndex]
+                val sX = ((sPt.distanceM / totalDist) * w).coerceIn(0f, w)
+                val sNormAlt = ((sPt.altitudeM - minAlt) / altRange).coerceIn(0f, 1f)
+                val sY = graphBottom - (sNormAlt * graphH)
+
+                // Vertical hairline indicator
+                drawLine(
+                    color = Color(0xFFF59E0B),
+                    start = Offset(sX, graphTop),
+                    end = Offset(sX, graphBottom),
+                    strokeWidth = 2.dp.toPx()
+                )
+
+                // Outer beacon glow
+                drawCircle(
+                    color = Color(0xFFF59E0B),
+                    radius = 6.dp.toPx(),
+                    center = Offset(sX, sY)
+                )
+                // Inner bright center dot
+                drawCircle(
+                    color = Color.White,
+                    radius = 3.dp.toPx(),
+                    center = Offset(sX, sY)
+                )
+            }
+        }
+
+        // Floating tooltip badge when scrubbing
+        if (scrubbedIndex != null && scrubbedIndex in points.indices) {
+            val sPt = points[scrubbedIndex]
+            val kmStr = String.format(Locale.US, "%.2f", sPt.distanceM / 1000f)
+            val altStr = "${sPt.altitudeM.toInt()}m"
+            val vzStr = String.format(Locale.US, "%+.1f m/s", sPt.vzMs)
+            val spdStr = "${sPt.speedKmh.toInt()} km/h"
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 4.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xEE1E293B))
+                    .border(1.dp, Color(0xFFF59E0B), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "📍 $kmStr km  ▲ $altStr  ⚡ $vzStr  ✈ $spdStr",
+                    fontSize = 11.sp,
+                    color = Color(0xFFFDE68A),
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileStatBadge(label: String, value: String, accentColor: Color) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = Color(0xFF1E293B),
+        border = BorderStroke(1.dp, Color(0xFF334155))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(text = label, fontSize = 10.sp, color = Color(0xFF94A3B8))
+            Text(text = value, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
         }
     }
 }

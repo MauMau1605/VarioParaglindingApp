@@ -126,4 +126,19 @@ object VarioMath {
     fun sinkFrequency(vz: Float): Double {
         return SINK_FREQ_MAX - (SINK_FREQ_MAX - SINK_FREQ_MIN) * sinkRatio(vz)
     }
+
+    /**
+     * Computes great-circle distance between two coordinates in meters using the Haversine formula.
+     * Pure function with zero dependencies and zero heap allocations.
+     */
+    fun distanceBetweenM(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
+        val earthRadiusM = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = kotlin.math.sin(dLat / 2.0).pow(2) +
+                kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+                kotlin.math.sin(dLon / 2.0).pow(2)
+        val c = 2.0 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1.0 - a))
+        return (earthRadiusM * c).toFloat()
+    }
 }

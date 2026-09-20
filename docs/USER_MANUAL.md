@@ -160,7 +160,60 @@ flowchart LR
 
 ---
 
-## 7. Diagnostics Terminal & Troubleshooting
+## 7. Hike & Fly Operations Mode
+
+VarioAppli includes a specialized **Hike & Fly** mode tailored for pilots who hike, ski-tour, or climb to their takeoff spot.
+
+### 1. Selecting Hike & Fly Mode
+- In standby (before starting a recording), look at the top of the **VARIO** cockpit.
+- Tap **"🥾 Hike & Fly"** on the mode selector tab.
+- The main action button transitions to **"DÉMARRER LA MONTÉE (HIKE)"**.
+
+### 2. Ascent Phase (Montée)
+- Tap the button when starting your ascent on foot, skis, or snowshoes.
+- **Muted Variometer:** Audio beeping is automatically silenced so you don't get false climb/sink chirps while walking.
+- **Elevation Gain ($D^+$) Display:** The primary central instrument replaces instantaneous $V_z$ with your cumulative elevation gain ($D^+$ in meters) since the start of the hike.
+- **Reference Altitudes:** Displays starting altitude, current barometric altitude, and total ground distance covered.
+- Continuous GPX recording logs your exact hiking trail.
+
+### 3. Transitioning to Flight Mode (Passage au Vol)
+When you reach the summit / takeoff launch site and prepare your wing:
+1. Tap the main action button (now labeled **"TERMINER MONTÉE / VOLER"**).
+2. A transition dialog appears with three choices:
+   - **"Passer en mode Vol" (Proceed to Flight):** Un-mutes the acoustic variometer, locks the current summit coordinates as your official takeoff location, switches the primary display back to the $V_z$ climb/sink ladder, and keeps recording your flight in the **same continuous GPX track**.
+   - **"Terminer l'enregistrement" (End Session):** Immediately finishes and saves your hike track (e.g. if conditions are unsuitable to fly and you walk down).
+   - **"Continuer la montée" (Continue Hike):** Dismisses the dialog and resumes ascent tracking.
+3. Once in Flight mode, land as normal and tap **"Arrêter le vol"** to finalize the full multi-phase log.
+
+---
+
+## 8. GPX Track Details & Interactive Elevation Profile
+
+When viewing previously saved tracks or loading external GPX tracks on the **CARTE (MAP)** tab:
+
+### 1. Track Summary Banner & Details Button
+- When a track is loaded, a floating header card displays the track filename and point count.
+- Tap the **"[📈 Détails]"** toggle button on this card to open the **Flight & Track Profile Card**.
+
+### 2. Track Summary Statistics
+The profile card displays essential statistics calculated from the track:
+- **Total Distance:** Total 3D ground distance covered (km).
+- **Duration:** Total elapsed time (`HH:MM:SS`).
+- **Elevation Gain ($D^+$) & Loss ($D^-$):** Cumulative ascent and descent.
+- **Altitude Range:** Minimum and maximum altitude attained ($Alt_{\min} - Alt_{\max}$).
+- **Max Speed & Average Speed:** Peak ground speed and overall speed.
+- **Thermal Lift & Sink Extremes:** Maximum positive climb rate and deepest sink.
+
+### 3. Interactive Elevation Profile & Finger Scrubber
+- The card renders an elevation vs. distance profile graph with a smooth gradient fill and min/max altitude bounds.
+- **Finger Scrubbing:** Touch or slide your finger horizontally anywhere across the profile graph:
+  - A vertical crosshair and floating indicator badge display the exact altitude, distance, and $V_z$ at that location.
+  - An animated **pulsing beacon target** on the map moves synchronously to the exact geographical position along the flight track.
+  - The map smoothly pans to follow your finger scrubbing, allowing you to review specific thermals, ridges, or transition glides effortlessly.
+
+---
+
+## 9. Diagnostics Terminal & Troubleshooting
 
 Tap the **Terminal icon `[>_]`** in the top bar to open the diagnostic window.
 

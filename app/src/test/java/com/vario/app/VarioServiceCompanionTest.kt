@@ -302,4 +302,70 @@ class VarioServiceCompanionTest {
         // expected = 10.0 * 0.65 + 5.0 * 0.35 = 6.5 + 1.75 = 8.25f
         assertEquals(8.25f, VarioService.computeBaroVz(1005f, 1000f, 1.0f, 10.0f), 0.001f)
     }
+
+    @Test
+    fun computeElevationGain_accumulatesPositiveClimbAboveNoiseThreshold() {
+        // Initial call when lastAlt is 0f: initializes lastAlt without gain
+        val (g0, a0) = VarioService.computeElevationGain(
+            currentGainM = 0f,
+            lastAltM = 0f,
+            newAltM = 1000f,
+            noiseThresholdM = 1.0f
+        )
+        assertEquals(0f, g0)
+        assertEquals(1000f, a0)
+
+        // Small increase below noise threshold (0.5m < 1.0m): no gain, lastAlt unchanged
+        val (g1, a1) = VarioService.computeElevationGain(
+            currentGainM = g0,
+            lastAltM = a0,
+            newAltM = 1000.5f,
+            noiseThresholdM = 1.0f
+        )
+        assertEquals(0f, g1)
+        assertEquals(1000f, a1)
+
+        // Clear climb: 1010m (+10m): gain increases by 10m, lastAlt updates to 1010m
+        val (g2, a2) = VarioService.computeElevationGain(
+            currentGainM = g1,
+            lastAltM = a1,
+            newAltM = 1010f,
+            noiseThresholdM = 1.0f
+        )
+        assertEquals(10f, g2)
+        assertEquals(1010f, a2)
+
+        // Descent: 1005m (-5m): gain remains 10m, lastAlt updates to 1005m
+        val (g3, a3) = VarioService.computeElevationGain(
+            currentGainM = g2,
+            lastAltM = a2,
+            newAltM = 1005f,
+            noiseThresholdM = 1.0f
+        )
+        assertEquals(10f, g3)
+        assertEquals(1005f, a3)
+
+        // Another climb: 1020m (+15m from 1005m): gain increases by 15m to 25m total
+        val (g4, a4) = VarioService.computeElevationGain(
+            currentGainM = g3,
+            lastAltM = a3,
+            newAltM = 1020f,
+            noiseThresholdM = 1.0f
+        )
+        assertEquals(25f, g4)
+        assertEquals(1020f, a4)
+    }
+
+    @Test
+    fun setFlightMode_updatesDataFlow() {
+        VarioService.setFlightMode(FlightMode.NORMAL)
+        assertEquals(FlightMode.NORMAL, VarioService.dataFlow.value.flightMode)
+
+        VarioService.setFlightMode(FlightMode.HIKE_AND_FLY)
+        assertEquals(FlightMode.HIKE_AND_FLY, VarioService.dataFlow.value.flightMode)
+
+        // Reset to normal
+        VarioService.setFlightMode(FlightMode.NORMAL)
+        assertEquals(FlightMode.NORMAL, VarioService.dataFlow.value.flightMode)
+    }
 }

@@ -44,6 +44,37 @@ data class TrackSummary(
 )
 
 /**
+ * Sampled waypoint along the track with cumulative distance from takeoff.
+ */
+data class TrackProfilePoint(
+    val pointIndex: Int,
+    val distanceM: Float,
+    val altitudeM: Float,
+    val latitude: Double,
+    val longitude: Double,
+    val vzMs: Float = 0f,
+    val speedKmh: Float = 0f,
+    val timeMs: Long = 0L
+)
+
+/**
+ * Aggregated profile statistics and waypoints dataset for elevation and distance plotting.
+ */
+data class TrackProfileData(
+    val points: List<TrackProfilePoint>,
+    val totalDistanceM: Float,
+    val minAltitudeM: Float,
+    val maxAltitudeM: Float,
+    val elevationGainM: Float,
+    val elevationLossM: Float,
+    val durationSec: Long,
+    val maxSpeedKmh: Float,
+    val avgSpeedKmh: Float,
+    val maxClimbVz: Float,
+    val maxSinkVz: Float
+)
+
+/**
  * Manager for recording, serializing, parsing, and sharing GPX flight tracks.
  */
 object GpxTrackManager {
@@ -360,5 +391,100 @@ object GpxTrackManager {
             Log.e(TAG, "Error sharing track", e)
             Toast.makeText(context, "Erreur lors du partage : ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * Computes the complete flight / hike elevation and distance profile dataset from track points.
+     */
+    fun computeTrackProfile(points: List<TrackPoint>): TrackProfileData {
+        if (points.isEmpty()) {
+            return TrackProfileData(
+                points = emptyList(),
+                totalDistanceM = 0f,
+                minAltitudeM = 0f,
+                maxAltitudeM = 0f,
+                elevationGainM = 0f,
+                elevationLossM = 0f,
+                durationSec = 0L,
+                maxSpeedKmh = 0f,
+                avgSpeedKmh = 0f,
+                maxClimbVz = 0f,
+                maxSinkVz = 0f
+            )
+        }
+
+        val profilePoints = ArrayList<TrackProfilePoint>(points.size)
+        var cumDist = 0f
+        var minAlt = points.first().altitudeM
+        var maxAlt = points.first().altitudeM
+        var dPlus = 0f
+        var dMinus = 0f
+        var maxSpeed = 0f
+        var sumSpeed = 0f
+        var maxClimb = 0f
+        var maxSink = 0f
+
+        for (i in points.indices) {
+            val pt = points[i]
+            if (i > 0) {
+                val prev = points[i - 1]
+                val segmentDist = VarioMath.distanceBetweenM(
+                    prev.latitude, prev.longitude,
+                    pt.latitude, pt.longitude
+                )
+                cumDist += segmentDist
+
+                val dAlt = pt.altitudeM - prev.altitudeM
+                if (dAlt > 0f) {
+                    dPlus += dAlt
+                } else {
+                    dMinus += kotlin.math.abs(dAlt)
+                }
+            }
+
+            if (pt.altitudeM < minAlt) minAlt = pt.altitudeM
+            if (pt.altitudeM > maxAlt) maxAlt = pt.altitudeM
+
+            if (pt.speedKmh > maxSpeed) maxSpeed = pt.speedKmh
+            sumSpeed += pt.speedKmh
+
+            if (pt.vzMs > maxClimb) maxClimb = pt.vzMs
+            if (pt.vzMs < maxSink) maxSink = pt.vzMs
+
+            profilePoints.add(
+                TrackProfilePoint(
+                    pointIndex = i,
+                    distanceM = cumDist,
+                    altitudeM = pt.altitudeM,
+                    latitude = pt.latitude,
+                    longitude = pt.longitude,
+                    vzMs = pt.vzMs,
+                    speedKmh = pt.speedKmh,
+                    timeMs = pt.timeMs
+                )
+            )
+        }
+
+        val durationSec = if (points.size >= 2) {
+            ((points.last().timeMs - points.first().timeMs) / 1000L).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+
+        val avgSpeed = if (points.isNotEmpty()) sumSpeed / points.size else 0f
+
+        return TrackProfileData(
+            points = profilePoints,
+            totalDistanceM = cumDist,
+            minAltitudeM = minAlt,
+            maxAltitudeM = maxAlt,
+            elevationGainM = dPlus,
+            elevationLossM = dMinus,
+            durationSec = durationSec,
+            maxSpeedKmh = maxSpeed,
+            avgSpeedKmh = avgSpeed,
+            maxClimbVz = maxClimb,
+            maxSinkVz = maxSink
+        )
     }
 }

@@ -9,6 +9,23 @@ enum class SensorMode {
 }
 
 /**
+ * Operating flight mode selected by the pilot.
+ */
+enum class FlightMode {
+    NORMAL,
+    HIKE_AND_FLY
+}
+
+/**
+ * Current lifecycle phase of a flight / hike session.
+ */
+enum class SessionPhase {
+    IDLE,       // Standby / not recording
+    HIKING,     // Recording ascent (way up: walking, skiing, climbing) - Vz beep muted, D+ displayed
+    FLYING      // Recording flight (way down) - Vz beep active, Vz ladder displayed
+}
+
+/**
  * Immutable data class representing the variometer state.
  * Exposed via [StateFlow] from [VarioService] to the UI layer.
  *
@@ -31,6 +48,10 @@ enum class SensorMode {
  * @property isUsbConnected Whether the USB sensor module is connected.
  * @property isUsbScanning Whether the service is actively scanning for a USB connection (30s timeout).
  * @property sensorMode Current sensor operating mode ([SensorMode.BARO_AND_GPS] or [SensorMode.GPS_ONLY]).
+ * @property flightMode Current flight mode ([FlightMode.NORMAL] or [FlightMode.HIKE_AND_FLY]).
+ * @property sessionPhase Current session phase ([SessionPhase.IDLE], [SessionPhase.HIKING], or [SessionPhase.FLYING]).
+ * @property elevationGainM Cumulative positive elevation gain (D+) from the beginning of the hike, in meters.
+ * @property hikeStartAltitudeM Altitude in meters at which the hike ascent began.
  * @property usbDeviceName Description/name of connected USB device, or null if disconnected.
  * @property gpsAccuracyM Estimated horizontal GPS accuracy in meters.
  * @property gpsVerticalAccuracyM Estimated vertical GPS accuracy in meters.
@@ -63,6 +84,10 @@ data class VarioData(
     val isUsbConnected: Boolean = false,
     val isUsbScanning: Boolean = false,
     val sensorMode: SensorMode = SensorMode.GPS_ONLY,
+    val flightMode: FlightMode = FlightMode.NORMAL,
+    val sessionPhase: SessionPhase = SessionPhase.IDLE,
+    val elevationGainM: Float = 0f,
+    val hikeStartAltitudeM: Float = 0f,
     val usbDeviceName: String? = null,
     val gpsAccuracyM: Float = 0f,
     val gpsVerticalAccuracyM: Float = 0f,

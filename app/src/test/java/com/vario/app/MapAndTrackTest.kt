@@ -268,5 +268,68 @@ class MapAndTrackTest {
         assertThat(result.isReachable).isFalse()
         assertThat(result.requiredGlideRatio.isInfinite()).isTrue()
     }
+
+    @Test
+    fun testComputeTrackProfile_emptyOrSinglePoint() {
+        val emptyProfile = GpxTrackManager.computeTrackProfile(emptyList())
+        assertThat(emptyProfile.points).isEmpty()
+        assertThat(emptyProfile.totalDistanceM).isEqualTo(0f)
+
+        val singlePoint = listOf(TrackPoint(45.0, 5.0, 1000f, 0f, 0f, 1000L))
+        val singleProfile = GpxTrackManager.computeTrackProfile(singlePoint)
+        assertThat(singleProfile.points).hasSize(1)
+        assertThat(singleProfile.totalDistanceM).isEqualTo(0f)
+        assertThat(singleProfile.minAltitudeM).isEqualTo(1000f)
+        assertThat(singleProfile.maxAltitudeM).isEqualTo(1000f)
+    }
+
+    @Test
+    fun testComputeTrackProfile_multiPointsStatsAndScrubber() {
+        // Point 0: 45.000, 5.000, 1000m, vz = 0.0, speed = 0 km/h, t = 0s
+        // Point 1: 45.009 (~1km), 5.000, 1050m (+50m climb), vz = 2.5, speed = 36 km/h (10 m/s), t = 100s
+        // Point 2: 45.018 (~2km), 5.000, 950m (-100m descent), vz = -3.0, speed = 40 km/h, t = 200s
+        // Point 3: 45.027 (~3km), 5.000, 980m (+30m climb), vz = 1.0, speed = 30 km/h, t = 300s
+        val pts = listOf(
+            TrackPoint(45.000, 5.000, 1000f, 0.0f, 0f, 1000L),
+            TrackPoint(45.009, 5.000, 1050f, 2.5f, 36f, 101000L),
+            TrackPoint(45.018, 5.000, 950f, -3.0f, 40f, 201000L),
+            TrackPoint(45.027, 5.000, 980f, 1.0f, 30f, 301000L)
+        )
+
+        val profile = GpxTrackManager.computeTrackProfile(pts)
+
+        assertThat(profile.points).hasSize(4)
+        assertThat(profile.totalDistanceM).isGreaterThan(2900f)
+        assertThat(profile.totalDistanceM).isLessThan(3100f)
+
+        // Min / max altitude
+        assertThat(profile.minAltitudeM).isEqualTo(950f)
+        assertThat(profile.maxAltitudeM).isEqualTo(1050f)
+
+        // Elevation gains and losses
+        // 1000 -> 1050 (+50)
+        // 1050 -> 950 (-100)
+        // 950 -> 980 (+30)
+        // Total D+ = 80m, Total D- = 100m
+        assertThat(profile.elevationGainM).isEqualTo(80f)
+        assertThat(profile.elevationLossM).isEqualTo(100f)
+
+        // Speed extremes
+        assertThat(profile.maxSpeedKmh).isEqualTo(40f)
+        assertThat(profile.avgSpeedKmh).isGreaterThan(0f)
+
+        // Vz extremes
+        assertThat(profile.maxClimbVz).isEqualTo(2.5f)
+        assertThat(profile.maxSinkVz).isEqualTo(-3.0f)
+
+        // Duration (301000 - 1000 = 300000 ms = 300s)
+        assertThat(profile.durationSec).isEqualTo(300L)
+
+        // Points progression
+        assertThat(profile.points[0].distanceM).isEqualTo(0f)
+        assertThat(profile.points[0].altitudeM).isEqualTo(1000f)
+        assertThat(profile.points[1].distanceM).isGreaterThan(900f)
+        assertThat(profile.points[3].distanceM).isEqualTo(profile.totalDistanceM)
+    }
 }
 

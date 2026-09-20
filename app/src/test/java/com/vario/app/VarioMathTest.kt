@@ -137,4 +137,24 @@ class VarioMathTest {
         assertEquals(VarioMath.P0_PA, VarioMath.calculateQnh(-100L, 1000f))
         assertEquals(VarioMath.P0_PA, VarioMath.calculateQnh(101325L, 50000f)) // above troposphere limit
     }
+
+    @Test
+    fun distanceBetweenM_calculatesAccurately() {
+        // Distance between same point is 0
+        assertEquals(0f, VarioMath.distanceBetweenM(45.0, 5.0, 45.0, 5.0))
+
+        // 1 degree latitude difference ~ 111,195m (Earth radius ~ 6,371,000m -> pi * R / 180 = 111194.9m)
+        val oneDegLatDist = VarioMath.distanceBetweenM(45.0, 5.0, 46.0, 5.0)
+        assertWithin(111195f, oneDegLatDist, 100f)
+
+        // Known short distance: e.g. ~1km North
+        // 1 km is roughly 0.00899 degrees latitude
+        val oneKmLat = 45.0 + (1000.0 / 111195.0)
+        val oneKmDist = VarioMath.distanceBetweenM(45.0, 5.0, oneKmLat, 5.0)
+        assertWithin(1000f, oneKmDist, 2f)
+
+        // Equator test: 1 degree longitude ~ 111,195m
+        val eqDist = VarioMath.distanceBetweenM(0.0, 0.0, 0.0, 1.0)
+        assertWithin(111195f, eqDist, 100f)
+    }
 }

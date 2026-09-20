@@ -150,5 +150,45 @@ class VarioDataTest {
         assertEquals(101325L, customData.lastRawPressurePa)
         assertEquals(150L, customData.lastRawVarioCmS)
     }
+
+    @Test
+    fun flightModeAndSessionPhase_defaultsAndCustomValues() {
+        val defaultData = VarioData()
+        assertEquals(FlightMode.NORMAL, defaultData.flightMode)
+        assertEquals(SessionPhase.IDLE, defaultData.sessionPhase)
+        assertEquals(0f, defaultData.elevationGainM)
+        assertEquals(0f, defaultData.hikeStartAltitudeM)
+
+        val customData = defaultData.copy(
+            flightMode = FlightMode.HIKE_AND_FLY,
+            sessionPhase = SessionPhase.HIKING,
+            elevationGainM = 350.5f,
+            hikeStartAltitudeM = 1100f
+        )
+        assertEquals(FlightMode.HIKE_AND_FLY, customData.flightMode)
+        assertEquals(SessionPhase.HIKING, customData.sessionPhase)
+        assertEquals(350.5f, customData.elevationGainM)
+        assertEquals(1100f, customData.hikeStartAltitudeM)
+
+        val flyingPhase = customData.copy(sessionPhase = SessionPhase.FLYING)
+        assertEquals(SessionPhase.FLYING, flyingPhase.sessionPhase)
+    }
+
+    @Test
+    fun flightModeEnum_containsExpectedValues() {
+        val values = FlightMode.values()
+        assertEquals(2, values.size)
+        assertEquals(FlightMode.NORMAL, FlightMode.valueOf("NORMAL"))
+        assertEquals(FlightMode.HIKE_AND_FLY, FlightMode.valueOf("HIKE_AND_FLY"))
+    }
+
+    @Test
+    fun sessionPhaseEnum_containsExpectedValues() {
+        val values = SessionPhase.values()
+        assertEquals(3, values.size)
+        assertEquals(SessionPhase.IDLE, SessionPhase.valueOf("IDLE"))
+        assertEquals(SessionPhase.HIKING, SessionPhase.valueOf("HIKING"))
+        assertEquals(SessionPhase.FLYING, SessionPhase.valueOf("FLYING"))
+    }
 }
 
