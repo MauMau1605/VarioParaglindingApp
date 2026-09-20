@@ -1298,9 +1298,17 @@ private fun MapTopHudBar(
                         text = String.format(Locale.US, "%02d:%02d", min, sec),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (varioData.isFlightActive) Color(0xFF4ADE80) else Color(0xFF94A3B8)
+                        color = when {
+                            varioData.isFlightPaused -> Color(0xFFF59E0B)
+                            varioData.isFlightActive -> Color(0xFF4ADE80)
+                            else -> Color(0xFF94A3B8)
+                        }
                     )
-                    Text("Temps", fontSize = 9.sp, color = Color(0xFF94A3B8))
+                    Text(
+                        text = if (varioData.isFlightPaused) "Pause ⏸️" else "Temps",
+                        fontSize = 9.sp,
+                        color = if (varioData.isFlightPaused) Color(0xFFF59E0B) else Color(0xFF94A3B8)
+                    )
                 }
             }
 

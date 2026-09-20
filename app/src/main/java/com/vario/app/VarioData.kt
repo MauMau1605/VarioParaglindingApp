@@ -42,6 +42,7 @@ enum class SessionPhase {
  * @property longitude Current GPS longitude in degrees.
  * @property gpsAltitudeM Current GPS altitude in meters.
  * @property isFlightActive Whether the flight has been started by the pilot.
+ * @property isFlightPaused Whether the flight/hike recording is currently paused.
  * @property flightDurationSec Elapsed flight time in seconds.
  * @property maxAltitudeM Maximum altitude (ceiling) reached during this flight.
  * @property isMuted Whether the variometer beeper audio is muted.
@@ -50,7 +51,11 @@ enum class SessionPhase {
  * @property sensorMode Current sensor operating mode ([SensorMode.BARO_AND_GPS] or [SensorMode.GPS_ONLY]).
  * @property flightMode Current flight mode ([FlightMode.NORMAL] or [FlightMode.HIKE_AND_FLY]).
  * @property sessionPhase Current session phase ([SessionPhase.IDLE], [SessionPhase.HIKING], or [SessionPhase.FLYING]).
- * @property elevationGainM Cumulative positive elevation gain (D+) from the beginning of the hike, in meters.
+ * @property elevationGainM Cumulative positive elevation gain (D+) from the beginning of the session, in meters.
+ * @property elevationLossM Cumulative elevation loss (D-) from the beginning of the session, in meters.
+ * @property flightElevationGainM Cumulative elevation gain (flight D+) strictly since flight takeoff, in meters.
+ * @property flightElevationLossM Cumulative elevation loss (flight D-) strictly since flight takeoff, in meters.
+ * @property flightMaxClimbRateMs Maximum positive vertical speed (climb rate) recorded since flight takeoff, in m/s.
  * @property hikeStartAltitudeM Altitude in meters at which the hike ascent began.
  * @property usbDeviceName Description/name of connected USB device, or null if disconnected.
  * @property gpsAccuracyM Estimated horizontal GPS accuracy in meters.
@@ -78,6 +83,7 @@ data class VarioData(
     val longitude: Double = 0.0,
     val gpsAltitudeM: Float = 0f,
     val isFlightActive: Boolean = false,
+    val isFlightPaused: Boolean = false,
     val flightDurationSec: Long = 0L,
     val maxAltitudeM: Float = 0f,
     val isMuted: Boolean = false,
@@ -87,6 +93,10 @@ data class VarioData(
     val flightMode: FlightMode = FlightMode.NORMAL,
     val sessionPhase: SessionPhase = SessionPhase.IDLE,
     val elevationGainM: Float = 0f,
+    val elevationLossM: Float = 0f,
+    val flightElevationGainM: Float = 0f,
+    val flightElevationLossM: Float = 0f,
+    val flightMaxClimbRateMs: Float = 0f,
     val hikeStartAltitudeM: Float = 0f,
     val usbDeviceName: String? = null,
     val gpsAccuracyM: Float = 0f,

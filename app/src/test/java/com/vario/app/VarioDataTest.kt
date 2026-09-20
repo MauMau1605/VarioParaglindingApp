@@ -156,22 +156,38 @@ class VarioDataTest {
         val defaultData = VarioData()
         assertEquals(FlightMode.NORMAL, defaultData.flightMode)
         assertEquals(SessionPhase.IDLE, defaultData.sessionPhase)
+        assertEquals(false, defaultData.isFlightPaused)
         assertEquals(0f, defaultData.elevationGainM)
+        assertEquals(0f, defaultData.elevationLossM)
+        assertEquals(0f, defaultData.flightElevationGainM)
+        assertEquals(0f, defaultData.flightElevationLossM)
+        assertEquals(0f, defaultData.flightMaxClimbRateMs)
         assertEquals(0f, defaultData.hikeStartAltitudeM)
 
         val customData = defaultData.copy(
             flightMode = FlightMode.HIKE_AND_FLY,
             sessionPhase = SessionPhase.HIKING,
+            isFlightPaused = true,
             elevationGainM = 350.5f,
+            elevationLossM = 42.0f,
+            flightElevationGainM = 150.0f,
+            flightElevationLossM = 300.0f,
+            flightMaxClimbRateMs = 3.2f,
             hikeStartAltitudeM = 1100f
         )
         assertEquals(FlightMode.HIKE_AND_FLY, customData.flightMode)
         assertEquals(SessionPhase.HIKING, customData.sessionPhase)
+        assertEquals(true, customData.isFlightPaused)
         assertEquals(350.5f, customData.elevationGainM)
+        assertEquals(42.0f, customData.elevationLossM)
+        assertEquals(150.0f, customData.flightElevationGainM)
+        assertEquals(300.0f, customData.flightElevationLossM)
+        assertEquals(3.2f, customData.flightMaxClimbRateMs)
         assertEquals(1100f, customData.hikeStartAltitudeM)
 
-        val flyingPhase = customData.copy(sessionPhase = SessionPhase.FLYING)
+        val flyingPhase = customData.copy(sessionPhase = SessionPhase.FLYING, isFlightPaused = false)
         assertEquals(SessionPhase.FLYING, flyingPhase.sessionPhase)
+        assertEquals(false, flyingPhase.isFlightPaused)
     }
 
     @Test

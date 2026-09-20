@@ -153,13 +153,21 @@ flowchart LR
    - The variometer audio activates.
 3. **In-Flight:**
    - Mount your phone onto your flight deck or slip it into your harness pocket. With `PARTIAL_WAKE_LOCK`, audio continues playing uninterrupted even when the screen is turned off.
-4. **Landing & Session Wrap-up:**
+4. **Landing, Pause & Session Wrap-up:**
    - After landing, tap **"Arrêter le vol" (Stop Flight)**.
    - Audio is muted immediately.
-   - **Save Confirmation Dialog:** A confirmation dialog appears presenting your session summary (flight duration, peak ceiling, and total distance). Choose:
+   - **Save & Pause Dialog:** A dialog appears presenting your session summary (flight duration, peak ceiling, and total distance). Choose:
      - **"💾 Enregistrer" (Save Track):** Saves the track to device storage in standard GPX format (`/Documents/VarioAppli/Tracks/`).
+     - **"⏸️ Pause" (Pause Session):** Freezes the session timer, distance, and elevation accumulation while keeping the session open. Returns you to the cockpit where the map, menus, and diagnostics remain fully interactive. The top bar indicates **`Pause ⏸️`** in amber.
      - **"🗑️ Ne pas enregistrer" (Discard):** Discards the flight track without saving to storage (preventing short tests or unwanted logs from cluttering your files).
      - **"Annuler" (Cancel):** Resumes flight recording if tapped accidentally.
+
+5. **Paused Session Lifecycle & Resume:**
+   - While paused, you can pan the tactical map, review airspaces or relief, inspect tracks, or check hardware diagnostics.
+   - To resume or terminate, tap the prominent action button (labeled **"SESSION EN PAUSE - TOUCHER"** or **"PAUSE - REPRENDRE"**):
+     - **"▶️ Reprendre" (Resume):** Continues active recording and un-mutes flight audio if in flight phase.
+     - **"🪂 Passer en mode Vol" (Switch to Fly Mode):** (Available during hike pause) transitions directly to flight mode at your current position.
+     - **"⏹️ Arrêter la session" (Stop Session):** Opens the final save/discard dialog.
 
 ---
 
@@ -172,27 +180,41 @@ VarioAppli includes a specialized **Hike & Fly** mode tailored for pilots who hi
 - Tap **"🥾 Hike & Fly"** on the mode selector tab.
 - The main action button transitions to **"DÉMARRER LA MONTÉE (HIKE)"**.
 
-### 2. Ascent Phase (Montée)
+### 2. Ascent Phase (Montée) Telemetry
 - Tap the button when starting your ascent on foot, skis, or snowshoes.
 - **Automatic Waypoint:** An initial waypoint **"Départ Rando"** is marked at your starting position with current altitude.
 - **Muted Variometer:** Audio beeping is automatically silenced so you don't get false climb/sink chirps while walking.
-- **Elevation Gain ($D^+$) Display:** The primary central instrument replaces instantaneous $V_z$ with your cumulative elevation gain ($D^+$ in meters) since the start of the hike.
-- **Reference Altitudes:** Displays starting altitude, current barometric altitude, and total ground distance covered.
+- **Dual Elevation Changes (▲ D ± ▼ 🥾):** The central altitude badge displays both cumulative ascent ($D^+$) and descent ($D^-$) side by side in meters.
+- **Average Pace (Allure moy.):** Cloudbase (irrelevant during ground hike) is replaced by your real-time average walking pace formatted in minutes/km (e.g. `12'45" min/km`).
+- **Distance from Start (Dist. départ):** Displays ground distance covered directly from your hike departure point.
 - Continuous GPX recording logs your exact hiking trail tagged with hiking phase metadata.
 
-### 3. Transitioning to Flight Mode (Passage au Vol)
+### 3. Transitioning to Flight Mode (Passage au Vol) & Pause
 When you reach the summit / takeoff launch site and prepare your wing:
 1. Tap the main action button (now labeled **"TERMINER MONTÉE / VOLER"**).
-2. A transition dialog appears with three choices:
-   - **"Passer en mode Vol" (Proceed to Flight):**
+2. A transition dialog appears with four choices:
+   - **"🪂 Passer en mode Vol" (Proceed to Flight):**
      - Places a distinct summit waypoint **"Décollage / Vol"** on the track and map.
      - Un-mutes the acoustic variometer.
      - Locks the current summit coordinates as your official takeoff location.
-     - Switches the primary display back to the $V_z$ climb/sink ladder.
+     - Restores flight telemetry: $V_z$ climb/sink ladder, Cloudbase ceiling (`Plafond`), and distance to takeoff (`Dist. déco`).
      - Continues recording your flight in the **same continuous GPX track**.
-   - **"Terminer l'enregistrement" (End Session):** Prompts you to confirm whether or not to save the hike track (e.g. if conditions are unsuitable to fly and you walk down).
-   - **"Continuer la montée" (Continue Hike):** Dismisses the dialog and resumes ascent tracking.
-3. Once in Flight mode, land as normal and tap **"Arrêter le vol"**. The confirmation dialog appears before saving the multi-phase GPX track with all transition waypoints included.
+   - **"⏸️ Pause" (Pause Session):** Pauses tracking and audio while you lay out your paraglider, check lines, and inspect the wind. You can freely explore the map or check airspace clearances.
+   - **"⏹️ Terminer l'enregistrement" (End Session):** Prompts you to confirm whether or not to save the hike track (e.g. if conditions are unsuitable to fly and you walk down).
+   - **"Annuler" (Continue Hike):** Dismisses the dialog and resumes ascent tracking.
+
+### 4. In-Flight Multi-View Telemetry (3-View Vertical Area)
+Once airborne in flight mode, you can tap anywhere on the central vertical speed / ladder instrument to cycle between three customized telemetry pages, indicated by pagination dots (`● ○ ○`):
+1. **Page 1: Vario Instantané (`● ○ ○`):**
+   - High-contrast vertical climb/sink ladder gauge + digital $V_z$ readout (m/s).
+2. **Page 2: Dénivelé Total Session (`○ ● ○`):**
+   - Shows cumulative session ascent ($D^+$) and descent ($D^-$) since the very beginning (including the hike if in Hike & Fly mode, or total solo flight elevation changes).
+3. **Page 3: Statistiques Décollage (`○ ○ ●`):**
+   - Focuses strictly on performance achieved since flight takeoff:
+     - **$D^+_{\text{vol}}$:** Cumulative thermal climb in flight.
+     - **$D^-_{\text{vol}}$:** Cumulative glide descent in flight.
+     - **$V_{z,\max}$:** Peak thermal climb rate recorded during the flight.
+4. Tapping again loops back to Page 1.
 
 ---
 

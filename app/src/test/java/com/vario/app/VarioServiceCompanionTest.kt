@@ -373,4 +373,65 @@ class VarioServiceCompanionTest {
     fun extraSaveTrackConstant_hasExpectedValue() {
         assertEquals("com.vario.app.EXTRA_SAVE_TRACK", VarioService.EXTRA_SAVE_TRACK)
     }
+
+    @Test
+    fun pauseAndResumeActionConstants_haveExpectedValues() {
+        assertEquals("com.vario.app.ACTION_PAUSE_FLIGHT", VarioService.ACTION_PAUSE_FLIGHT)
+        assertEquals("com.vario.app.ACTION_RESUME_FLIGHT", VarioService.ACTION_RESUME_FLIGHT)
+    }
+
+    @Test
+    fun computeElevationLoss_accumulatesDescentBelowNoiseThreshold() {
+        // Initial call with 0f: sets lastAlt, no loss
+        val (l0, a0) = VarioService.computeElevationLoss(0f, 0f, 1000f, 1.0f)
+        assertEquals(0f, l0)
+        assertEquals(1000f, a0)
+
+        // Drop below threshold (0.5m < 1.0m): no loss, lastAlt unchanged
+        val (l1, a1) = VarioService.computeElevationLoss(l0, a0, 999.5f, 1.0f)
+        assertEquals(0f, l1)
+        assertEquals(1000f, a1)
+
+        // Clear drop: 990m (-10m): loss increases by 10m, lastAlt updates to 990m
+        val (l2, a2) = VarioService.computeElevationLoss(l1, a1, 990f, 1.0f)
+        assertEquals(10f, l2)
+        assertEquals(990f, a2)
+
+        // Climb: 998m (+8m): loss remains 10m, lastAlt updates to 998m
+        val (l3, a3) = VarioService.computeElevationLoss(l2, a2, 998f, 1.0f)
+        assertEquals(10f, l3)
+        assertEquals(998f, a3)
+
+        // Another drop: 980m (-18m from 998m): loss increases by 18m to 28m total
+        val (l4, a4) = VarioService.computeElevationLoss(l3, a3, 980f, 1.0f)
+        assertEquals(28f, l4)
+        assertEquals(980f, a4)
+    }
+
+    @Test
+    fun computeElevationChanges_tracksGainAndLossSimultaneously() {
+        // Start at 1000m
+        var (gain, loss, alt) = VarioService.computeElevationChanges(0f, 0f, 0f, 1000f, 1.0f)
+        assertEquals(0f, gain)
+        assertEquals(0f, loss)
+        assertEquals(1000f, alt)
+
+        // Climb to 1050m (+50m)
+        val step1 = VarioService.computeElevationChanges(gain, loss, alt, 1050f, 1.0f)
+        assertEquals(50f, step1.first)
+        assertEquals(0f, step1.second)
+        assertEquals(1050f, step1.third)
+
+        // Drop to 1020m (-30m)
+        val step2 = VarioService.computeElevationChanges(step1.first, step1.second, step1.third, 1020f, 1.0f)
+        assertEquals(50f, step2.first)
+        assertEquals(30f, step2.second)
+        assertEquals(1020f, step2.third)
+
+        // Climb to 1040m (+20m)
+        val step3 = VarioService.computeElevationChanges(step2.first, step2.second, step2.third, 1040f, 1.0f)
+        assertEquals(70f, step3.first)
+        assertEquals(30f, step3.second)
+        assertEquals(1040f, step3.third)
+    }
 }

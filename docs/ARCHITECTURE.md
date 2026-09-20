@@ -281,30 +281,53 @@ stateDiagram-v2
     Standby --> Hiking: ACTION_START_FLIGHT (Mode: HIKE_AND_FLY)
     state Hiking {
         [*] --> MuteAudio: audioEngine.isFlightActive = false
-        MuteAudio --> TrackAscent: Accumulate Elevation Gain (D+) & Distance
-        TrackAscent --> TrackAscent: Display D+ in place of Vz
+        TrackAscent --> TrackAscent: Accumulate Elevation D+ & D-, Average Pace
+        TrackAscent --> TrackAscent: Display dual D+/D- & Dist. départ
     }
+    Hiking --> Paused: ACTION_PAUSE_FLIGHT
+    Paused --> Hiking: ACTION_RESUME_FLIGHT (Resume Hike)
+    Paused --> Flying: ACTION_PROCEED_TO_FLY (Direct switch to Fly)
     Hiking --> Flying: ACTION_PROCEED_TO_FLY (Takeoff locked)
     state Flying {
         [*] --> UnmuteAudio: audioEngine.isFlightActive = true
         UnmuteAudio --> FlightTelemetry: Standard Vz ladder, climb/sink beeps
-        FlightTelemetry --> FlightTelemetry: Continue same GPX track
+        FlightTelemetry --> FlightTelemetry: Cycle views (Vz / Session D+D- / Flight Takeoff stats)
     }
-    Hiking --> Standby: Terminate Session
-    Flying --> Standby: Landed / Stop Flight
+    Flying --> Paused: ACTION_PAUSE_FLIGHT
+    Paused --> Flying: ACTION_RESUME_FLIGHT (Resume Flight)
+    Hiking --> Standby: Terminate Session (Save or Discard GPX)
+    Flying --> Standby: Landed / Stop Flight (Save or Discard GPX)
+    Paused --> Standby: ACTION_STOP_FLIGHT (Save or Discard GPX)
 ```
 
-### Zero-Allocation Audio Suspension During Ascent
-During `SessionPhase.HIKING`:
-- `audioEngine?.isFlightActive` remains `false`.
-- The real-time audio thread (`VarioAudioEngine`) continues filling its pre-allocated `ShortArray(512)` buffer with pure digital silence (0s).
-- **Fast-Path Integrity:** Zero objects, lambdas, or threads are created or destroyed during phase transitions.
+### Zero-Allocation Audio Suspension & Pause Subsystem
+- **During `SessionPhase.HIKING`:**
+  - `audioEngine?.isFlightActive` remains `false`.
+  - The real-time audio thread (`VarioAudioEngine`) continues filling its pre-allocated `ShortArray(512)` buffer with pure digital silence (0s).
+- **During Pause (`isFlightPaused == true`):**
+  - Triggered via `ACTION_PAUSE_FLIGHT`. Silences audio immediately (`audioEngine.isFlightActive = false`).
+  - Halts the flight duration ticker, track point accumulation in `GpxTrackManager`, and distance/elevation integration.
+  - Keeps GPS fixes, USB reception, map navigation, and menus fully responsive for ground resting, planning, or tactical checks.
+  - Resumed via `ACTION_RESUME_FLIGHT` (or transition to flight via `ACTION_PROCEED_TO_FLY`).
+- **Fast-Path Integrity:** Zero objects, lambdas, or threads are created or destroyed during pause, resume, or phase transitions.
 
-### Cumulative Elevation Gain (D+) Filter (`computeElevationGain`)
-Barometric pressure sensor noise or altitude jitter (~0.1 to 0.5 m) can artificially inflate cumulative ascent over a long hike. To prevent false elevation accumulation, `VarioService.computeElevationGain` enforces a 1.0 m deadband threshold:
-- If $(Alt_{current} - Alt_{last}) \ge 1.0\text{ m}$, the delta is added to $D^+$ and $Alt_{last}$ updates to $Alt_{current}$.
-- If $Alt_{current} \le Alt_{last}$, $Alt_{last}$ ratchets downward to track descents without decrementing $D^+$.
-- Jitter where $|Alt_{current} - Alt_{last}| < 1.0\text{ m}$ is ignored.
+### Cumulative Elevation Gain (D+) & Loss (D-) Filters
+Barometric pressure sensor noise or altitude jitter (~0.1 to 0.5 m) can artificially inflate cumulative elevation metrics over long sessions. To ensure clinical accuracy, `VarioService` employs noise-gated math:
+- `computeElevationLoss(currentLoss, lastAlt, newAlt, noiseThresholdM = 1.0f)`
+- `computeElevationChanges(currentGain, currentLoss, lastAlt, newAlt, noiseThresholdM = 1.0f)`
+- If $|Alt_{current} - Alt_{last}| \ge 1.0\text{ m}$, positive deltas increment $D^+$ and negative deltas increment $D^-$, advancing $Alt_{last}$.
+- Altitude jitter below the $1.0\text{ m}$ threshold is rejected.
+
+### Cockpit Adaptive Views & Interactive Telemetry
+- **Hike Telemetry Phase:**
+  - `Plafond` (cloudbase) is replaced with **Allure moyenne** (`Allure moy.`, in `MM'SS" min/km`).
+  - `Dist. déco` is dynamically renamed to **`Dist. départ`** (distance from starting trailhead).
+  - Main altitude indicator displays dual **`▲ D ± ▼ 🥾`** showing cumulative ascent ($D^+$) and descent ($D^-$) side by side.
+- **Flight 3-View Vertical Metric Cycler:**
+  - In `FLYING` phase, clicking the vertical speed readout cycles through 3 distinct pages with pagination dot indicators (`● ○ ○`):
+    1. **Page 0 (Vario Instantané):** Standard analog ladder gauge + instantaneous $V_z$ readout.
+    2. **Page 1 (Dénivelé Total Session):** Total cumulative $D^+$ and $D^-$ since session start (including hike if Hike & Fly, or solo flight climb/sink).
+    3. **Page 2 (Statistiques Décollage):** Flight-only stats since flight takeoff ($D^+_{\text{vol}}$, $D^-_{\text{vol}}$, and peak climb rate $V_{z,\max}$).
 
 ---
 

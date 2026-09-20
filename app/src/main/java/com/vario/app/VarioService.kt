@@ -96,6 +96,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
         const val ACTION_SET_FLIGHT_MODE = "com.vario.app.ACTION_SET_FLIGHT_MODE"
         const val EXTRA_FLIGHT_MODE = "com.vario.app.EXTRA_FLIGHT_MODE"
         const val ACTION_PROCEED_TO_FLY = "com.vario.app.ACTION_PROCEED_TO_FLY"
+        const val ACTION_PAUSE_FLIGHT = "com.vario.app.ACTION_PAUSE_FLIGHT"
+        const val ACTION_RESUME_FLIGHT = "com.vario.app.ACTION_RESUME_FLIGHT"
         const val EXTRA_SAVE_TRACK = "com.vario.app.EXTRA_SAVE_TRACK"
         const val USB_SCAN_TIMEOUT_SEC = 30
 
@@ -114,6 +116,26 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 instance?.flightMode = mode
                 _dataFlow.value = current.copy(flightMode = mode)
             }
+        }
+
+        /**
+         * Sends pause flight intent to pause recording and silence audio.
+         */
+        fun pauseFlight(context: Context) {
+            val intent = Intent(context, VarioService::class.java).apply {
+                action = ACTION_PAUSE_FLIGHT
+            }
+            context.startService(intent)
+        }
+
+        /**
+         * Sends resume flight intent to unpause recording.
+         */
+        fun resumeFlight(context: Context) {
+            val intent = Intent(context, VarioService::class.java).apply {
+                action = ACTION_RESUME_FLIGHT
+            }
+            context.startService(intent)
         }
 
         /**
@@ -322,6 +344,50 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 else -> Pair(currentGainM, lastAltM)
             }
         }
+
+        /**
+         * Pure calculation of cumulative elevation loss (D-), with noise filtering threshold.
+         * When newAlt drops below lastAlt by at least [noiseThresholdM], adds drop to loss and advances lastAlt.
+         * When newAlt exceeds lastAlt by at least [noiseThresholdM], updates lastAlt without modifying loss.
+         */
+        fun computeElevationLoss(
+            currentLossM: Float,
+            lastAltM: Float,
+            newAltM: Float,
+            noiseThresholdM: Float = 1.0f
+        ): Pair<Float, Float> {
+            if (lastAltM <= 0f || newAltM <= 0f) {
+                return Pair(currentLossM, if (newAltM > 0f) newAltM else lastAltM)
+            }
+            val diff = newAltM - lastAltM
+            return when {
+                diff <= -noiseThresholdM -> Pair(currentLossM + (-diff), newAltM)
+                diff >= noiseThresholdM -> Pair(currentLossM, newAltM)
+                else -> Pair(currentLossM, lastAltM)
+            }
+        }
+
+        /**
+         * Calculates cumulative positive gain (D+) and loss (D-) with noise filtering.
+         * Returns Triple(newGainM, newLossM, newLastAltM).
+         */
+        fun computeElevationChanges(
+            currentGainM: Float,
+            currentLossM: Float,
+            lastAltM: Float,
+            newAltM: Float,
+            noiseThresholdM: Float = 1.0f
+        ): Triple<Float, Float, Float> {
+            if (lastAltM <= 0f || newAltM <= 0f) {
+                return Triple(currentGainM, currentLossM, if (newAltM > 0f) newAltM else lastAltM)
+            }
+            val diff = newAltM - lastAltM
+            return when {
+                diff >= noiseThresholdM -> Triple(currentGainM + diff, currentLossM, newAltM)
+                diff <= -noiseThresholdM -> Triple(currentGainM, currentLossM + (-diff), newAltM)
+                else -> Triple(currentGainM, currentLossM, lastAltM)
+            }
+        }
     }
 
     // ── Private state ────────────────────────────────────────────────────────
@@ -340,22 +406,24 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
     private var locationCallback: LocationCallback? = null
     private var takeoffLocation: Location? = null
     private var lastKnownLocation: Location? = null
-    private var initialGpsAltitudeM: Float? = null
-    private var currentQnhPa: Double = VarioMath.P0_PA
     private var isCalibrated: Boolean = false
-    private var lastRawPressurePa: Long = 0L
-    private var totalDistanceTraveledM: Float = 0f
-
-    // ── GPS-only Vz state (zero-allocation primitives) ─────────────────────────
-    private var lastGpsAltitudeM: Double = Double.NaN
-    private var lastGpsTimeMs: Long = 0L
-    private var smoothedGpsVz: Float = 0f
+    private var currentQnhPa: Double = VarioMath.P0_PA
     private var lastGpsFixTimeMs: Long = 0L
+
+    private var initialGpsAltitudeM: Float? = null
+    private var lastRawPressurePa: Long = 0L
     private var gpsAccuracyM: Float = 0f
     private var gpsVerticalAccuracyM: Float = 0f
     private var isGpsAvailable: Boolean = false
 
-    // ── Barometric altitude fallback Vz state ────────────────────────────────
+    private var smoothedGpsVz: Float = 0f
+    private var lastGpsAltitudeM: Double = Double.NaN
+    private var lastGpsTimeMs: Long = 0L
+
+    private var totalDistanceTraveledM: Float = 0f
+
+    // ── Barometer filtering state (zero-allocation fast path) ─────────────────
+
     private var lastBaroAltM: Float = Float.NaN
     private var lastBaroTimeMs: Long = 0L
     private var smoothedBaroVz: Float = 0f
@@ -368,14 +436,18 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
     private var flightMode: FlightMode = FlightMode.NORMAL
     private var sessionPhase: SessionPhase = SessionPhase.IDLE
     private var isFlightActive: Boolean = false
+    private var isFlightPaused: Boolean = false
     private var flightDurationSec: Long = 0L
     private var flightStartTimeMs: Long = 0L
     private var maxAltitudeM: Float = 0f
     private var elevationGainM: Float = 0f
+    private var elevationLossM: Float = 0f
+    private var flightElevationGainM: Float = 0f
+    private var flightElevationLossM: Float = 0f
+    private var flightMaxClimbRateMs: Float = 0f
     private var lastElevationGainAltM: Float = 0f
+    private var lastFlightElevationAltM: Float = 0f
     private var hikeStartAltitudeM: Float = 0f
-
-    // ── USB Serial Diagnostics & Fast-Path Counters ──────────────────────────
 
     private var currentBaudRate: Int = 115200
     private var totalBytesRead: Long = 0L
@@ -384,6 +456,44 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
     private var recentRawIndex = 0
 
     private val parser = Lk8ex1Parser(this)
+
+    /**
+     * Updates cumulative elevation metrics and flight stats with zero heap allocations.
+     * Operates purely on primitive float fields.
+     */
+    private fun updateElevationAndStats(newAlt: Float, currentVz: Float) {
+        if (newAlt <= 0f) return
+        if (lastElevationGainAltM <= 0f) {
+            lastElevationGainAltM = newAlt
+        } else {
+            val diff = newAlt - lastElevationGainAltM
+            if (diff >= 1.0f) {
+                elevationGainM += diff
+                lastElevationGainAltM = newAlt
+            } else if (diff <= -1.0f) {
+                elevationLossM += (-diff)
+                lastElevationGainAltM = newAlt
+            }
+        }
+
+        if (sessionPhase == SessionPhase.FLYING) {
+            if (lastFlightElevationAltM <= 0f) {
+                lastFlightElevationAltM = newAlt
+            } else {
+                val flightDiff = newAlt - lastFlightElevationAltM
+                if (flightDiff >= 1.0f) {
+                    flightElevationGainM += flightDiff
+                    lastFlightElevationAltM = newAlt
+                } else if (flightDiff <= -1.0f) {
+                    flightElevationLossM += (-flightDiff)
+                    lastFlightElevationAltM = newAlt
+                }
+            }
+            if (currentVz > flightMaxClimbRateMs) {
+                flightMaxClimbRateMs = currentVz
+            }
+        }
+    }
 
     // ── Broadcast Receivers ──────────────────────────────────────────────────
 
@@ -451,7 +561,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                     -1f
                 }
 
-                if (isFlightActive) {
+                if (isFlightActive && !isFlightPaused) {
                     flightDurationSec++
                 }
 
@@ -498,6 +608,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
             }
             ACTION_START_FLIGHT, ACTION_RESET_TAKEOFF -> {
                 isFlightActive = true
+                isFlightPaused = false
                 flightDurationSec = 0L
                 flightStartTimeMs = System.currentTimeMillis()
                 totalDistanceTraveledM = 0f
@@ -511,7 +622,12 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 ).firstOrNull { it > 0f } ?: 0f
                 maxAltitudeM = currentAlt
                 elevationGainM = 0f
+                elevationLossM = 0f
+                flightElevationGainM = 0f
+                flightElevationLossM = 0f
+                flightMaxClimbRateMs = 0f
                 lastElevationGainAltM = currentAlt
+                lastFlightElevationAltM = if (flightMode == FlightMode.NORMAL) currentAlt else 0f
                 hikeStartAltitudeM = currentAlt
 
                 smoothedGpsVz = 0f
@@ -568,9 +684,14 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 val dist = if (currentLoc != null && takeoffLocation != null) currentLoc.distanceTo(takeoffLocation!!) else 0f
                 _dataFlow.value = _dataFlow.value.copy(
                     isFlightActive = true,
+                    isFlightPaused = false,
                     flightMode = flightMode,
                     sessionPhase = sessionPhase,
                     elevationGainM = 0f,
+                    elevationLossM = 0f,
+                    flightElevationGainM = 0f,
+                    flightElevationLossM = 0f,
+                    flightMaxClimbRateMs = 0f,
                     hikeStartAltitudeM = currentAlt,
                     flightDurationSec = 0L,
                     maxAltitudeM = maxAltitudeM,
@@ -583,12 +704,17 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
             ACTION_PROCEED_TO_FLY -> {
                 if (sessionPhase == SessionPhase.HIKING) {
                     sessionPhase = SessionPhase.FLYING
+                    isFlightPaused = false
+                    flightElevationGainM = 0f
+                    flightElevationLossM = 0f
+                    flightMaxClimbRateMs = 0f
                     takeoffLocation = lastKnownLocation // Lock flight takeoff location at current summit/launch site
+                    val currentLoc = lastKnownLocation
+                    val alt = if (_dataFlow.value.altitudeM > 0f) _dataFlow.value.altitudeM else (currentLoc?.altitude?.toFloat() ?: 0f)
+                    lastFlightElevationAltM = alt
                     smoothedGpsVz = 0f
                     smoothedBaroVz = 0f
                     audioEngine?.isFlightActive = true // Un-mutes and starts variometer audio!
-                    val currentLoc = lastKnownLocation
-                    val alt = if (_dataFlow.value.altitudeM > 0f) _dataFlow.value.altitudeM else (currentLoc?.altitude?.toFloat() ?: 0f)
                     if (currentLoc != null) {
                         GpxTrackManager.addWaypoint(
                             GpxWaypoint(
@@ -605,9 +731,37 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                     val dist = if (currentLoc != null && takeoffLocation != null) currentLoc.distanceTo(takeoffLocation!!) else 0f
                     _dataFlow.value = _dataFlow.value.copy(
                         sessionPhase = SessionPhase.FLYING,
-                        distanceToTakeoffM = dist
+                        isFlightPaused = false,
+                        distanceToTakeoffM = dist,
+                        flightElevationGainM = 0f,
+                        flightElevationLossM = 0f,
+                        flightMaxClimbRateMs = 0f
                     )
                     DebugLogger.log(TAG, "Hike & Fly: switched to Fly mode (takeoff locked at ${alt}m)", DebugLogger.Level.INFO)
+                    updateNotification()
+                }
+            }
+            ACTION_PAUSE_FLIGHT -> {
+                if (isFlightActive && !isFlightPaused) {
+                    isFlightPaused = true
+                    audioEngine?.isFlightActive = false
+                    audioEngine?.currentVz = 0f
+                    _dataFlow.value = _dataFlow.value.copy(
+                        isFlightPaused = true,
+                        vzMs = 0f
+                    )
+                    DebugLogger.log(TAG, "Flight session paused", DebugLogger.Level.INFO)
+                    updateNotification()
+                }
+            }
+            ACTION_RESUME_FLIGHT -> {
+                if (isFlightActive && isFlightPaused) {
+                    isFlightPaused = false
+                    if (sessionPhase == SessionPhase.FLYING) {
+                        audioEngine?.isFlightActive = true
+                    }
+                    _dataFlow.value = _dataFlow.value.copy(isFlightPaused = false)
+                    DebugLogger.log(TAG, "Flight session resumed", DebugLogger.Level.INFO)
                     updateNotification()
                 }
             }
@@ -616,6 +770,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 val wasHike = sessionPhase == SessionPhase.HIKING
 
                 isFlightActive = false
+                isFlightPaused = false
                 sessionPhase = SessionPhase.IDLE
                 audioEngine?.isFlightActive = false
                 audioEngine?.currentVz = 0f
@@ -623,6 +778,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 smoothedBaroVz = 0f
                 _dataFlow.value = _dataFlow.value.copy(
                     isFlightActive = false,
+                    isFlightPaused = false,
                     sessionPhase = SessionPhase.IDLE,
                     vzMs = 0f
                 )
@@ -1110,17 +1266,15 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
             DebugLogger.log(TAG, "QNH calibrated from GPS location: $currentQnhPa Pa", DebugLogger.Level.INFO)
         }
 
-        // Accumulate segment distance only when flight is active
-        totalDistanceTraveledM = accumulateDistanceTraveled(isFlightActive, totalDistanceTraveledM, lastKnownLocation, loc)
+        // Accumulate segment distance only when flight is active and not paused
+        totalDistanceTraveledM = accumulateDistanceTraveled(isFlightActive && !isFlightPaused, totalDistanceTraveledM, lastKnownLocation, loc)
         lastKnownLocation = loc
 
-        if (isFlightActive) {
-            val (newGain, newLastAlt) = computeElevationGain(elevationGainM, lastElevationGainAltM, locAlt)
-            elevationGainM = newGain
-            lastElevationGainAltM = newLastAlt
+        val effectiveVz = if (_dataFlow.value.isUsbConnected) _dataFlow.value.vzMs else smoothedGpsVz
+        if (isFlightActive && !isFlightPaused) {
+            updateElevationAndStats(locAlt, effectiveVz)
 
             val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6f else 0f
-            val effectiveVz = if (_dataFlow.value.isUsbConnected) _dataFlow.value.vzMs else smoothedGpsVz
             GpxTrackManager.addPoint(
                 TrackPoint(
                     latitude = loc.latitude,
@@ -1154,16 +1308,21 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
         val newAltitudeM = if (current.altitudeM <= 0f) locAlt else current.altitudeM
 
         if (!current.isUsbConnected) {
-            val effectiveVz = if (isFlightActive && sessionPhase == SessionPhase.FLYING) smoothedGpsVz else 0f
+            val audioVz = if (isFlightActive && !isFlightPaused && sessionPhase == SessionPhase.FLYING) smoothedGpsVz else 0f
             // Feed GPS-derived Vz to audio engine only when flight is active and in FLYING phase
-            audioEngine?.currentVz = effectiveVz
+            audioEngine?.currentVz = audioVz
 
             _dataFlow.value = current.copy(
                 altitudeM = locAlt,
-                vzMs = effectiveVz,
+                vzMs = audioVz,
                 distanceToTakeoffM = distanceToTakeoff,
                 totalDistanceTraveledM = totalDistanceTraveledM,
                 elevationGainM = elevationGainM,
+                elevationLossM = elevationLossM,
+                flightElevationGainM = flightElevationGainM,
+                flightElevationLossM = flightElevationLossM,
+                flightMaxClimbRateMs = flightMaxClimbRateMs,
+                isFlightPaused = isFlightPaused,
                 sessionPhase = sessionPhase,
                 flightMode = flightMode,
                 gpsFixAcquired = true,
@@ -1186,6 +1345,11 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 distanceToTakeoffM = distanceToTakeoff,
                 totalDistanceTraveledM = totalDistanceTraveledM,
                 elevationGainM = elevationGainM,
+                elevationLossM = elevationLossM,
+                flightElevationGainM = flightElevationGainM,
+                flightElevationLossM = flightElevationLossM,
+                flightMaxClimbRateMs = flightMaxClimbRateMs,
+                isFlightPaused = isFlightPaused,
                 sessionPhase = sessionPhase,
                 flightMode = flightMode,
                 gpsFixAcquired = true,
@@ -1201,51 +1365,32 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
         }
     }
 
-    // ── Lk8ex1Parser.Listener callback ───────────────────────────────────────
+    // ── LK8EX1 Parser Callback (invoked from USB read coroutine) ─────────────
 
-    /**
-     * Called when a complete LK8EX1 sentence has been parsed.
-     *
-     * Converts native vario (cm/s) to m/s for instant zero-lag audio feedback,
-     * and derives altitude either from field 1 (if provided) or from barometric
-     * pressure (field 0 in Pa) calibrated with GPS QNH.
-     */
-    override fun onSentenceComplete(pressurePa: Long, altitudeM: Long, varioCmS: Long) {
-        val effectivePressurePa = if (pressurePa in 300..1200) pressurePa * 100 else pressurePa
-        val isValidPressure = effectivePressurePa in 30000L..115000L
-        if (isValidPressure) {
-            lastRawPressurePa = effectivePressurePa
-        }
+    override fun onSentenceComplete(
+        pressurePa: Long,
+        altitudeM: Long,
+        varioCmS: Long
+    ) {
+        val nowMs = SystemClock.elapsedRealtime()
+        lastRawPressurePa = pressurePa
 
-        var calculatedAlt = if (isValidPressure) {
-            val availableGpsAlt = initialGpsAltitudeM ?: lastKnownLocation?.altitude?.toFloat()
-            if (!isCalibrated && availableGpsAlt != null) {
-                currentQnhPa = VarioMath.calculateQnh(effectivePressurePa, availableGpsAlt)
-                isCalibrated = true
-                DebugLogger.log(TAG, "QNH calibrated with baro pressure: $currentQnhPa Pa", DebugLogger.Level.INFO)
-            }
-            VarioMath.pressureToAltitude(effectivePressurePa, currentQnhPa)
-        } else if (altitudeM != 99999L && altitudeM > 0L) {
-            altitudeM.toFloat()
-        } else {
-            0f
-        }
+        // ── Fast path: compute calibrated altitude with zero heap allocation ──
+        val calculatedAlt = arbitrateAltitude(
+            pressurePa = pressurePa,
+            rawAltitudeM = altitudeM,
+            currentQnhPa = currentQnhPa,
+            availableGpsAlt = _dataFlow.value.gpsAltitudeM,
+            previousAltitudeM = _dataFlow.value.altitudeM
+        )
 
-        if (calculatedAlt <= 0f) {
-            val gpsAlt = lastKnownLocation?.altitude?.toFloat() ?: initialGpsAltitudeM ?: _dataFlow.value.gpsAltitudeM
-            if (gpsAlt > 0f) {
-                calculatedAlt = gpsAlt
-            } else if (_dataFlow.value.altitudeM > 0f) {
-                calculatedAlt = _dataFlow.value.altitudeM
-            }
-        }
-
-        if (calculatedAlt > maxAltitudeM) {
+        // Track peak altitude reached during active flight
+        if (isFlightActive && calculatedAlt > maxAltitudeM) {
             maxAltitudeM = calculatedAlt
         }
 
-        val nowMs = SystemClock.elapsedRealtime()
-        val hasNativeVario = varioCmS != 0L && varioCmS != 99999L
+        // ── Fast path: calculate Vz from barometric difference or native LK8EX1 ──
+        val hasNativeVario = varioCmS != 9999L
         val vz: Float
         if (isFlightActive) {
             if (hasNativeVario) {
@@ -1277,14 +1422,12 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
             vz = 0f
         }
 
-        if (isFlightActive && calculatedAlt > 0f) {
-            val (newGain, newLastAlt) = computeElevationGain(elevationGainM, lastElevationGainAltM, calculatedAlt)
-            elevationGainM = newGain
-            lastElevationGainAltM = newLastAlt
+        if (isFlightActive && !isFlightPaused && calculatedAlt > 0f) {
+            updateElevationAndStats(calculatedAlt, vz)
         }
 
         // ── Fast path: update audio engine immediately (volatile write) ──
-        val effectiveAudioVz = if (sessionPhase == SessionPhase.FLYING) vz else 0f
+        val effectiveAudioVz = if (sessionPhase == SessionPhase.FLYING && !isFlightPaused) vz else 0f
         audioEngine?.currentVz = effectiveAudioVz
 
         if (nowMs - lastDiagLogTimeMs >= 800L || kotlin.math.abs(vz) >= 0.3f) {
@@ -1305,6 +1448,11 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
             altitudeM = calculatedAlt,
             vzMs = vz,
             elevationGainM = elevationGainM,
+            elevationLossM = elevationLossM,
+            flightElevationGainM = flightElevationGainM,
+            flightElevationLossM = flightElevationLossM,
+            flightMaxClimbRateMs = flightMaxClimbRateMs,
+            isFlightPaused = isFlightPaused,
             sessionPhase = sessionPhase,
             flightMode = flightMode,
             isCalibrated = isCalibrated,
@@ -1377,7 +1525,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
         )
 
         val content = when {
-            _dataFlow.value.sessionPhase == SessionPhase.HIKING -> "Hike & Fly : Montée (D+ ${_dataFlow.value.elevationGainM.toInt()}m)"
+            _dataFlow.value.isFlightPaused -> "Session en pause ⏸️"
+            _dataFlow.value.sessionPhase == SessionPhase.HIKING -> "Hike & Fly : Montée (D+ ${_dataFlow.value.elevationGainM.toInt()}m / D- ${_dataFlow.value.elevationLossM.toInt()}m)"
             _dataFlow.value.sessionPhase == SessionPhase.FLYING && _dataFlow.value.flightMode == FlightMode.HIKE_AND_FLY -> "Hike & Fly : Vol"
             _dataFlow.value.isUsbConnected -> "Module USB connecté (LK8EX1)"
             _dataFlow.value.isUsbScanning -> "Recherche du module USB (30s)…"
