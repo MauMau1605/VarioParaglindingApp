@@ -94,6 +94,12 @@ class VarioAudioEngine {
     /** Sample counter within the current beep on/off cycle. */
     private var beepCounter = 0
 
+    /** Hysteresis state: true when currently in climb audio zone */
+    private var inClimbZone = false
+
+    /** Hysteresis state: true when currently in sink audio zone */
+    private var inSinkZone = false
+
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
     /**
@@ -192,6 +198,8 @@ class VarioAudioEngine {
         audioTrack = null
         phase = 0.0
         beepCounter = 0
+        inClimbZone = false
+        inSinkZone = false
     }
 
     // ── Audio loop — ZERO ALLOCATION ZONE ────────────────────────────────────
@@ -213,16 +221,45 @@ class VarioAudioEngine {
     /**
      * Fills [outBuffer] with the appropriate PCM waveform for the given [vz].
      * Exposed as internal for unit testing without starting an [AudioTrack].
+     *
+     * Employs a Schmitt-trigger hysteresis state machine:
+     * - Climb audio engages at [VarioMath.VZ_CLIMB_ENTER] and only disengages when falling below [VarioMath.VZ_CLIMB_EXIT].
+     * - Sink audio engages at [VarioMath.VZ_SINK_ENTER] and only disengages when rising above [VarioMath.VZ_SINK_EXIT].
+     * This completely prevents intermittent chattering when hovering near threshold limits.
      */
     internal fun generateBuffer(vz: Float, outBuffer: ShortArray) {
         val effectiveVz = if (isTestingTone) testToneVz else vz
         if ((!isFlightActive || isMuted) && !isTestingTone) {
+            inClimbZone = false
+            inSinkZone = false
             fillSilence(outBuffer)
             return
         }
+
+        // Schmitt-trigger state transitions
+        if (inClimbZone) {
+            if (effectiveVz < VarioMath.VZ_CLIMB_EXIT) {
+                inClimbZone = false
+            }
+        } else {
+            if (effectiveVz >= VarioMath.VZ_CLIMB_ENTER) {
+                inClimbZone = true
+            }
+        }
+
+        if (inSinkZone) {
+            if (effectiveVz > VarioMath.VZ_SINK_EXIT) {
+                inSinkZone = false
+            }
+        } else {
+            if (effectiveVz <= VarioMath.VZ_SINK_ENTER) {
+                inSinkZone = true
+            }
+        }
+
         when {
-            effectiveVz >= VarioMath.VZ_CLIMB_THRESHOLD -> fillClimbTone(effectiveVz, outBuffer)
-            effectiveVz <= VarioMath.VZ_SINK_THRESHOLD -> fillSinkTone(effectiveVz, outBuffer)
+            inClimbZone -> fillClimbTone(effectiveVz, outBuffer)
+            inSinkZone -> fillSinkTone(effectiveVz, outBuffer)
             else -> fillSilence(outBuffer)
         }
     }
@@ -230,6 +267,8 @@ class VarioAudioEngine {
     internal fun resetPhaseAndBeep() {
         phase = 0.0
         beepCounter = 0
+        inClimbZone = false
+        inSinkZone = false
     }
 
     /**

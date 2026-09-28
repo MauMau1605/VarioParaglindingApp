@@ -31,11 +31,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,6 +54,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +75,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Main activity of VarioAppli.
@@ -162,6 +173,7 @@ class MainActivity : ComponentActivity() {
                         onResumeFlight = { resumeFlight() },
                         onStopFlight = { saveTrack -> stopFlight(saveTrack) },
                         onSetFlightMode = { setFlightMode(it) },
+                        onSetActivityType = { setActivityType(it) },
                         onProceedToFly = { proceedToFly() },
                         onToggleMute = { toggleMute() },
                         onReconnectUsb = { manualReconnectUsb() },
@@ -309,6 +321,15 @@ class MainActivity : ComponentActivity() {
         startService(intent)
     }
 
+    private fun setActivityType(type: ActivityType) {
+        VarioService.setActivityType(type)
+        val intent = Intent(this, VarioService::class.java).apply {
+            action = VarioService.ACTION_SET_ACTIVITY_TYPE
+            putExtra(VarioService.EXTRA_ACTIVITY_TYPE, type.name)
+        }
+        startService(intent)
+    }
+
     private fun proceedToFly() {
         val intent = Intent(this, VarioService::class.java).apply {
             action = VarioService.ACTION_PROCEED_TO_FLY
@@ -321,6 +342,17 @@ class MainActivity : ComponentActivity() {
             action = VarioService.ACTION_TOGGLE_MUTE
         }
         startService(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val uri = intent.data
+        if (uri != null && uri.scheme == "varioappli" && uri.host == "strava-auth") {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                StravaManager.handleAuthCallback(this@MainActivity, uri)
+            }
+            Toast.makeText(this, "Connexion Strava réussie ✓", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 
@@ -351,6 +383,7 @@ private fun VarioScreen(
     onResumeFlight: () -> Unit,
     onStopFlight: (Boolean) -> Unit,
     onSetFlightMode: (FlightMode) -> Unit,
+    onSetActivityType: (ActivityType) -> Unit,
     onProceedToFly: () -> Unit,
     onToggleMute: () -> Unit,
     onReconnectUsb: () -> Unit,
@@ -361,11 +394,13 @@ private fun VarioScreen(
     onOpenMap: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var showDebugModal by remember { mutableStateOf(false) }
     var showHikeTransitionDialog by remember { mutableStateOf(false) }
     var showSaveConfirmDialog by remember { mutableStateOf(false) }
     var showResumeDialog by remember { mutableStateOf(false) }
     var flyMetricViewIndex by remember { mutableStateOf(0) }
+    var isActivityDropdownExpanded by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -432,69 +467,80 @@ private fun VarioScreen(
                 onOpenMap = onOpenMap
             )
 
-            // ── Flight Mode Selector or Active Hike & Fly Banner ─────────
+            // ── Activity Type Selector or Active Session Banner ─────────
             if (!varioData.isFlightActive) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF131926))
-                        .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(12.dp))
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val isNormal = varioData.flightMode == FlightMode.NORMAL
+                Box(modifier = Modifier.fillMaxWidth()) {
                     Surface(
-                        shape = RoundedCornerShape(9.dp),
-                        color = if (isNormal) Color(0xFF1E293B) else Color.Transparent,
-                        border = if (isNormal) BorderStroke(1.dp, Color(0xFF38BDF8)) else null,
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF131926),
+                        border = BorderStroke(1.dp, Color(0xFF1E293B)),
                         modifier = Modifier
-                            .weight(1f)
-                            .clickable { onSetFlightMode(FlightMode.NORMAL) }
+                            .fillMaxWidth()
+                            .clickable { isActivityDropdownExpanded = true }
                     ) {
                         Row(
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(text = "🪂", fontSize = 14.sp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Vol Solo",
-                                fontSize = 13.sp,
-                                fontWeight = if (isNormal) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isNormal) Color.White else Color(0xFF94A3B8)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = varioData.activityType.emoji,
+                                    fontSize = 18.sp
+                                )
+                                Text(
+                                    text = varioData.activityType.label,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Filled.ArrowDropDown,
+                                contentDescription = "Choisir activité",
+                                tint = Color(0xFF94A3B8)
                             )
                         }
                     }
 
-                    val isHike = varioData.flightMode == FlightMode.HIKE_AND_FLY
-                    Surface(
-                        shape = RoundedCornerShape(9.dp),
-                        color = if (isHike) Color(0xFF1E293B) else Color.Transparent,
-                        border = if (isHike) BorderStroke(1.dp, Color(0xFF4ADE80)) else null,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { onSetFlightMode(FlightMode.HIKE_AND_FLY) }
+                    DropdownMenu(
+                        expanded = isActivityDropdownExpanded,
+                        onDismissRequest = { isActivityDropdownExpanded = false },
+                        modifier = Modifier.background(Color(0xFF1E293B))
                     ) {
-                        Row(
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "🥾", fontSize = 14.sp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Hike & Fly",
-                                fontSize = 13.sp,
-                                fontWeight = if (isHike) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isHike) Color.White else Color(0xFF94A3B8)
+                        ActivityType.values().forEach { type ->
+                            val isSelected = varioData.activityType == type
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Text(text = type.emoji, fontSize = 18.sp)
+                                        Text(
+                                            text = type.label,
+                                            fontSize = 14.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) Color(0xFF38BDF8) else Color(0xFFE2E8F0)
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    isActivityDropdownExpanded = false
+                                    onSetActivityType(type)
+                                },
+                                modifier = Modifier.background(
+                                    if (isSelected) Color(0xFF131926) else Color.Transparent
+                                )
                             )
                         }
                     }
                 }
             } else if (varioData.flightMode == FlightMode.HIKE_AND_FLY) {
-                // Active Hike & Fly session banner
+                // Active multi-sport session banner (hike, run, ski touring, or hike&fly)
                 val bannerBorder = when {
                     varioData.isFlightPaused -> Color(0xFFF59E0B)
                     varioData.sessionPhase == SessionPhase.HIKING -> Color(0xFF0284C7)
@@ -505,9 +551,11 @@ private fun VarioScreen(
                     varioData.sessionPhase == SessionPhase.HIKING -> Color(0x330284C7)
                     else -> Color(0x3310B981)
                 }
+                val actLabel = varioData.activityType.label
+                val actEmoji = varioData.activityType.emoji
                 val bannerText = when {
-                    varioData.isFlightPaused -> "⏸️ Session en pause — Bips vario coupés"
-                    varioData.sessionPhase == SessionPhase.HIKING -> "🥾 Montée (Marche / Alpi) — Bips vario coupés"
+                    varioData.isFlightPaused -> "⏸️ $actLabel en pause — Bips vario coupés"
+                    varioData.sessionPhase == SessionPhase.HIKING -> "$actEmoji $actLabel en cours — Bips vario coupés"
                     else -> "🪂 En Vol (Descente) — Variomètre sonore actif"
                 }
                 val bannerTextColor = when {
@@ -620,7 +668,7 @@ private fun VarioScreen(
                             }
                             Spacer(modifier = Modifier.height(14.dp))
                             Text(
-                                text = if (varioData.isFlightPaused) "Montée en pause ⏸️" else "Montée en cours (Hike)",
+                                text = if (varioData.isFlightPaused) "${varioData.activityType.label} en pause ⏸️" else "${varioData.activityType.emoji} ${varioData.activityType.label} en cours",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = if (varioData.isFlightPaused) Color(0xFFF59E0B) else Color(0xFF38BDF8)
@@ -1015,7 +1063,7 @@ private fun VarioScreen(
                         if (varioData.isFlightActive) {
                             if (varioData.isFlightPaused) {
                                 showResumeDialog = true
-                            } else if (varioData.sessionPhase == SessionPhase.HIKING) {
+                            } else if (varioData.sessionPhase == SessionPhase.HIKING && varioData.activityType == ActivityType.HIKE_AND_FLY) {
                                 showHikeTransitionDialog = true
                             } else {
                                 showSaveConfirmDialog = true
@@ -1037,18 +1085,21 @@ private fun VarioScreen(
                         }
                     )
                 ) {
+                    val actType = varioData.activityType
                     val btnText = when {
-                        !varioData.isFlightActive && varioData.flightMode == FlightMode.HIKE_AND_FLY -> "Démarrer la montée (Hike)"
-                        !varioData.isFlightActive -> "Démarrer le vol"
+                        !varioData.isFlightActive && actType == ActivityType.SIMPLE_FLIGHT -> "Démarrer le vol"
+                        !varioData.isFlightActive && actType == ActivityType.HIKE_AND_FLY -> "Démarrer (${actType.emoji} ${actType.label})"
+                        !varioData.isFlightActive -> "Démarrer ${actType.emoji} ${actType.label}"
                         varioData.isFlightPaused -> "En pause — Reprendre ▶️"
-                        varioData.sessionPhase == SessionPhase.HIKING -> "Fin de montée / Vol 🪂"
+                        varioData.sessionPhase == SessionPhase.HIKING && actType == ActivityType.HIKE_AND_FLY -> "Fin de montée / Vol 🪂"
+                        varioData.sessionPhase == SessionPhase.HIKING -> "Arrêter ${actType.label}"
                         else -> "Arrêter le vol"
                     }
                     Text(
                         text = btnText,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (!varioData.isFlightActive && varioData.flightMode != FlightMode.HIKE_AND_FLY) Color(0xFF0B1710) else Color.White
+                        color = if (!varioData.isFlightActive && actType == ActivityType.SIMPLE_FLIGHT) Color(0xFF0B1710) else Color.White
                     )
                 }
 
@@ -1154,9 +1205,16 @@ private fun VarioScreen(
 
         // ── Save Track Confirmation Dialog ──────────────────────────────
         if (showSaveConfirmDialog) {
-            val isHike = varioData.flightMode == FlightMode.HIKE_AND_FLY && varioData.sessionPhase == SessionPhase.HIKING
-            val sessionTitle = if (isHike) "l'ascension" else "le vol"
+            val actType = varioData.activityType
+            val isHikePhase = varioData.sessionPhase == SessionPhase.HIKING
+            val sessionTitle = when {
+                actType == ActivityType.SIMPLE_FLIGHT -> "le vol"
+                isHikePhase -> actType.label.lowercase()
+                else -> "le vol"
+            }
             val durationText = formatDuration(varioData.flightDurationSec)
+            var isStravaUploading by remember { mutableStateOf(false) }
+            var stravaUploadResult by remember { mutableStateOf<String?>(null) }
 
             AlertDialog(
                 onDismissRequest = { showSaveConfirmDialog = false },
@@ -1186,8 +1244,9 @@ private fun VarioScreen(
                                 modifier = Modifier.padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
+                                Text("${actType.emoji} Activité : ${actType.label}", fontSize = 13.sp, color = Color(0xFF38BDF8), fontWeight = FontWeight.SemiBold)
                                 Text("⏱️ Durée : $durationText", fontSize = 13.sp, color = Color(0xFF94A3B8))
-                                if (isHike) {
+                                if (isHikePhase || actType != ActivityType.SIMPLE_FLIGHT) {
                                     Text("⛰️ D+ / D- : +${varioData.elevationGainM.toInt()} m / -${varioData.elevationLossM.toInt()} m", fontSize = 13.sp, color = Color(0xFF4ADE80), fontWeight = FontWeight.SemiBold)
                                 } else {
                                     Text("⛰️ Plafond max : ${varioData.maxAltitudeM.toInt()} m", fontSize = 13.sp, color = Color(0xFF38BDF8))
@@ -1197,17 +1256,93 @@ private fun VarioScreen(
                                 }
                             }
                         }
+                        // Strava sync status
+                        if (stravaUploadResult != null) {
+                            Text(
+                                text = stravaUploadResult!!,
+                                fontSize = 12.sp,
+                                color = if (stravaUploadResult!!.startsWith("✓")) Color(0xFF4ADE80) else Color(0xFFF87171)
+                            )
+                        }
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            showSaveConfirmDialog = false
-                            onStopFlight(true)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E))
-                    ) {
-                        Text("💾 Enregistrer", fontWeight = FontWeight.Bold, color = Color.White)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button(
+                            onClick = {
+                                showSaveConfirmDialog = false
+                                onStopFlight(true)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("💾 Enregistrer", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        // Strava Upload button
+                        Button(
+                            onClick = {
+                                isStravaUploading = true
+                                stravaUploadResult = null
+                                // Stop and save first, then upload
+                                onStopFlight(true)
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    try {
+                                        // Wait a moment for GPX to be written
+                                        kotlinx.coroutines.delay(1500)
+                                        if (!StravaManager.isAuthenticated(context)) {
+                                            // Open Strava OAuth login
+                                            val authUrl = StravaManager.getAuthorizationUrl()
+                                            val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(authUrl))
+                                            context.startActivity(browserIntent)
+                                            stravaUploadResult = "🔑 Connectez-vous à Strava..."
+                                            isStravaUploading = false
+                                            return@launch
+                                        }
+                                        val tracksDir = GpxTrackManager.getTracksDirectory(context)
+                                        val latestFile = tracksDir.listFiles { f -> f.name.endsWith(".gpx") }
+                                            ?.maxByOrNull { it.lastModified() }
+                                        if (latestFile != null) {
+                                            val result = StravaManager.uploadGpxToStrava(
+                                                context = context,
+                                                gpxFile = latestFile,
+                                                activityName = "${actType.label} - ${java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(java.util.Date())}",
+                                                activityType = actType.stravaType,
+                                                description = "Enregistré avec VarioAppli"
+                                            )
+                                            stravaUploadResult = if (result.success) {
+                                                "✓ Envoyé à Strava (upload #${result.uploadId})"
+                                            } else {
+                                                "✗ Erreur Strava : ${result.error}"
+                                            }
+                                        } else {
+                                            stravaUploadResult = "✗ Fichier GPX introuvable"
+                                        }
+                                    } catch (e: Exception) {
+                                        stravaUploadResult = "✗ Erreur : ${e.message}"
+                                    }
+                                    isStravaUploading = false
+                                }
+                                showSaveConfirmDialog = false
+                            },
+                            enabled = !isStravaUploading,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFC4C02)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (isStravaUploading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(
+                                text = if (isStravaUploading) "Envoi…" else "💾 Enregistrer + Strava",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 14.sp
+                            )
+                        }
                     }
                 },
                 dismissButton = {
@@ -1342,7 +1477,9 @@ private fun VarioScreen(
                 onRequestUsbPermission = onRequestUsbPermission,
                 onSetBaudRate = onSetBaudRate,
                 onTestAudio = onTestAudio,
-                onStopAudioTest = onStopAudioTest
+                onStopAudioTest = onStopAudioTest,
+                onSetFilterPreset = { VarioService.setFilterPreset(it) },
+                onToggleImuAssist = { VarioService.setImuAssist(it) }
             )
         }
     }

@@ -84,20 +84,38 @@ The main interface is divided into two primary tabs: **VARIO** (Flight Instrumen
 
 ---
 
-## 4. Acoustic Variometer Response
+## 4. Acoustic Variometer Response & Smart Filtering
 
-The audio engine produces distinct acoustic signatures for climbs, sinking air, and calm glides:
+### Smart Kalman Filtering & Noise Gate
+Barometric sensors naturally experience atmospheric micro-fluctuations and thermal noise (±15 cm/s). Without smart processing, this causes variometers to "chatter" or beep erratically even while standing still on the takeoff pad.
+
+VarioAppli eliminates this using a **1D State-Space Kalman Filter** paired with a **Schmitt-trigger hysteresis gate**:
+1. **Stationary Noise Gate:** At rest or in still air ($|V_z| < 0.10\text{ m/s}$), the reading is clamped strictly to `0.0 m/s`. Cockpit numbers remain solid and the audio remains completely silent.
+2. **Schmitt-Trigger Hysteresis:**
+   - Climb beeps engage when $V_z \ge +0.30\text{ m/s}$.
+   - Once beeping, audio only shuts off when $V_z$ drops below $+0.18\text{ m/s}$. This prevents annoying intermittent stuttering when hovering near the lift threshold.
+   - Sink alarm engages at $\le -2.00\text{ m/s}$ and disengages when rising above $-1.80\text{ m/s}$.
+3. **Filter Presets (Configurable in Diagnostics):**
+   - **Équilibré (Balanced - Default):** Ideal general-purpose setting for modern paragliders.
+   - **Amorti (Smooth):** Strong damping and wider deadband; perfect for turbulent air, hike ascents, or noisy DIY sensors.
+   - **Réactif (Sensitive):** Ultra-fast response with minimum damping; ideal for competition pilots coring weak, narrow lift.
+
+> [!NOTE]
+> **Assistance IMU / Accéléromètre (Expérimental) :**
+> You can optionally enable sensor fusion with your phone's internal accelerometer and gyroscope in the **Filtrage** tab. When active, vertical acceleration ($a_{z, world}$) is projected into the Earth frame and integrated into the Kalman prediction step, offering zero-latency audio reaction to thermal entries before barometric pressure variation propagates. Kept disabled by default to maximize phone battery life.
+
+### Acoustic Tone Behaviors
 
 | Flight Condition | Vertical Speed ($V_z$) | Acoustic Tone | Description |
 |---|---|---|---|
 | **Strong Thermal** | $+3.0\text{ to }+5.0\text{ m/s}$ | Fast, high-pitched beeps (800–1200 Hz, 5–6 beeps/sec) | Short, crisp pulses with 85% duty cycle signaling strong lift core. |
 | **Moderate Lift** | $+1.0\text{ to }+3.0\text{ m/s}$ | Medium beeps (550–800 Hz, 3–5 beeps/sec) | Comfortable cadence for centering thermals. |
-| **Weak Lift** | $+0.3\text{ to }+1.0\text{ m/s}$ | Slow, lower beeps (400–550 Hz, 1.5–3 beeps/sec) | Alerts pilot to thermal entry or buoyant air. |
-| **Deadband (Glide)**| $-2.0\text{ to }+0.3\text{ m/s}$ | **Silence** | Dead zone to minimize acoustic fatigue during normal transitions. |
-| **Sink Alarm** | $\le -2.0\text{ m/s}$ | Continuous low tone (400 Hz down to 200 Hz) | Steady alarm indicating strong sink or downdraft. |
+| **Weak Lift** | $+0.30\text{ m/s}$ (enter), $+0.18\text{ m/s}$ (exit) | Slow, lower beeps (400–550 Hz, 1.5–3 beeps/sec) | Alerts pilot to thermal entry or buoyant air without chatter. |
+| **Deadband (Glide)**| $-1.80\text{ to }+0.18\text{ m/s}$ | **Silence** | Dead zone to minimize acoustic fatigue during normal transitions. |
+| **Sink Alarm** | $\le -2.00\text{ m/s}$ (enter), $\le -1.80\text{ m/s}$ (exit) | Continuous low tone (400 Hz down to 200 Hz) | Steady alarm indicating strong sink or downdraft. |
 
 > [!TIP]
-> You can test all acoustic tones on the ground before launching by opening the **Diagnostics Modal** and tapping the tone test buttons.
+> You can test all acoustic tones on the ground before launching by opening the **Diagnostics Modal** (`[>_]`) and tapping the tone test buttons or adjusting the Kalman filter preset.
 
 ---
 
@@ -171,16 +189,27 @@ flowchart LR
 
 ---
 
-## 7. Hike & Fly Operations Mode
+## 7. Multi-Sport & Hike & Fly Operations Mode
 
-VarioAppli includes a specialized **Hike & Fly** mode tailored for pilots who hike, ski-tour, or climb to their takeoff spot.
+VarioAppli includes a modern multi-sport activity selector supporting:
+- 🪂 **Vol Solo (Solo Flight):** Classic paragliding / hang gliding flight cockpit.
+- 🥾🪂 **Hike & Fly:** Combined ascent tracking + airborne descent in a single continuous GPX track.
+- 🥾 **Randonnée (Hiking):** Pure mountain hiking session without acoustic flight beeps.
+- 🏃 **Course à pied (Running / Trail):** Running session with $D^+/D^-$ elevation tracking and average pace.
+- ⛷️ **Ski de rando (Ski Touring):** Alpine touring / backcountry skiing with elevation and descent tracking.
 
-### 1. Selecting Hike & Fly Mode
+### 1. Selecting an Activity
 - In standby (before starting a recording), look at the top of the **VARIO** cockpit.
-- Tap **"🥾 Hike & Fly"** on the mode selector tab.
-- The main action button transitions to **"DÉMARRER LA MONTÉE (HIKE)"**.
+- Tap the **Activity Dropdown Selector** displaying the current sport and icon (e.g. `🪂 Vol Solo`).
+- Select your desired sport from the menu.
+- If any sport other than **Vol Solo** is selected (Hiking, Running, Ski Touring, or Hike & Fly), the interface automatically shifts to the mountain telemetry layout:
+  - Variometer acoustic tones are muted.
+  - The $V_z$ ladder is replaced by dual $D^+ / D^-$ gain/loss meters.
+  - Cloudbase is replaced by average pace (`min/km`).
+  - Distance to takeoff is replaced by distance from start (`Dist. départ`).
+- The main action button dynamically updates to **"DÉMARRER [ACTIVITÉ]"**.
 
-### 2. Ascent Phase (Montée) Telemetry
+### 2. Multi-Sport & Hike Ascent Telemetry
 - Tap the button when starting your ascent on foot, skis, or snowshoes.
 - **Automatic Waypoint:** An initial waypoint **"Départ Rando"** is marked at your starting position with current altitude.
 - **Muted Variometer:** Audio beeping is automatically silenced so you don't get false climb/sink chirps while walking.
@@ -250,7 +279,28 @@ The profile card displays essential statistics calculated from the track:
 
 ---
 
-## 9. Diagnostics Terminal & Troubleshooting
+## 9. Strava Synchronization
+
+VarioAppli enables 1-tap synchronization of your recorded sessions directly to your Strava profile:
+
+### 1. Supported Activities on Strava
+When saved, VarioAppli automatically tags the GPX file with the appropriate sport metadata matching Strava sport types:
+- **Vol Solo:** Exported as `Workout` / `Flight`
+- **Hike & Fly:** Exported as `Hike`
+- **Randonnée:** Exported as `Hike`
+- **Course à pied:** Exported as `Run`
+- **Ski de rando:** Exported as `BackcountrySki`
+
+### 2. Syncing from the Save Dialog
+1. When stopping an activity, the save confirmation dialog offers:
+   - **"💾 Enregistrer":** Local GPX save only.
+   - **"💾 Enregistrer + Strava" (Orange button):** Saves the local GPX track and immediately uploads it to Strava via the Strava v3 Uploads API.
+2. If this is your first time syncing, VarioAppli will prompt you to authorize your account via the secure OAuth 2.0 flow in your web browser. Once authorized, tokens are stored securely on-device.
+3. The upload status and activity ID are displayed in real-time.
+
+---
+
+## 10. Diagnostics Terminal & Troubleshooting
 
 Tap the **Terminal icon `[>_]`** in the top bar to open the diagnostic window.
 
@@ -258,9 +308,14 @@ Tap the **Terminal icon `[>_]`** in the top bar to open the diagnostic window.
 - **Live LK8EX1 Sentence Stream:** Displays incoming ASCII sentences in real time. Verify that sentences begin with `$LK8EX1` and end with a valid checksum.
 - **Frame & Error Counters:** Shows total valid frames processed versus corrupted/dropped frames.
 - **Baud Rate Switcher:** If your sensor dongle uses a custom firmware baud rate, choose between `115200`, `57600`, `38400`, `19200`, or `9600`.
+- **Filtrage & Kalman Settings:** Switch between `Amorti (Smooth)`, `Équilibré (Balanced)`, and `Réactif (Sensitive)` presets, observe real-time raw vs filtered $V_z$ and noise gate status, or toggle **Assistance IMU / Accéléromètre (Expérimental)**.
 - **Audio Tone Simulator:** Tap `Climb +1.5 m/s`, `Climb +3.0 m/s`, or `Sink -3.0 m/s` to confirm smartphone speakers are functioning properly.
 
 ### Troubleshooting Common Issues
+
+#### Issue: Variometer beeps or twitches when standing still on the ground
+- **Cause:** Atmospheric micro-pressure noise or turbulent ground air.
+- **Remedy:** Open the Diagnostics Modal (`[>_]`), select the **Filtrage** tab, and switch the preset to **Amorti (Smooth)**. VarioAppli's stationary noise gate automatically zeros out residual fluctuations below ±0.12 m/s.
 
 #### Issue: "USB Disconnected" or no data stream
 - **Check Cable:** Ensure your cable supports data transfer (many charging cables only carry power). An OTG-compatible cable is required.

@@ -165,13 +165,57 @@ stateDiagram-v2
 
 ---
 
-## 6. Vario Audio Engine & Acoustic Mapping
+## 6. Smart Kalman Filtering & Noise Suppression Subsystem
+
+### The Physical Barometric Noise Problem
+Barometric pressure sensors (BMP280, BMP380/390, MS5611) exhibit natural micro-pressure fluctuations (RMS noise of ~1.5 to 3.0 Pa, or ~±0.12m to ±0.25m in altitude). When sampled at high frequency (10 Hz, $\Delta t = 0.1$s), numerical differentiation yields artificial vertical speed spikes ($\Delta h / \Delta t = \pm 1.5\text{ m/s}$) even when stationary. Furthermore, many open-source/DIY variometers stream native LK8EX1 `varioCmS` with ±10 to ±30 cm/s of noise at rest.
+
+### Zero-Allocation 1D State-Space Kalman Estimator (`VarioKalmanFilter.kt`)
+To resolve sensor noise without sluggish low-pass filter latency, VarioAppli implements a continuous-discrete linear quadratic estimator (Kalman filter):
+
+- **State Vector:** $\mathbf{x} = \begin{bmatrix} h \\ V_z \end{bmatrix}$ (Altitude in meters, Vertical speed in m/s)
+- **Transition Matrix:** $\mathbf{F} = \begin{bmatrix} 1 & \Delta t \\ 0 & 1 \end{bmatrix}$
+- **Continuous Process Noise Covariance ($\mathbf{Q}$):** Integrated acceleration variance $\sigma_a^2$:
+  $$\mathbf{Q} = \sigma_a^2 \begin{bmatrix} \frac{\Delta t^4}{4} & \frac{\Delta t^3}{2} \\ \frac{\Delta t^3}{2} & \Delta t^2 \end{bmatrix}$$
+- **Zero-Allocation Fast Path Execution:** All matrix multiplications are expanded symbolically into primitive scalar float equations (`p00`, `p01`, `p11`). No objects, matrices, or arrays are created during runtime.
+
+### Filter Presets
+Pilots can tune the filter dynamically via UI or Intent:
+- **`SMOOTH` (Amorti):** $\sigma_a^2 = 0.4\text{ m}^2/\text{s}^4$, $R_{baro} = 0.60$, $R_{vario} = 0.35$, deadband gate $\varepsilon = 0.12\text{ m/s}$. Recommended for turbulent conditions, hike ascents, or noisy sensors.
+- **`BALANCED` (Équilibré - Default):** $\sigma_a^2 = 1.0\text{ m}^2/\text{s}^4$, $R_{baro} = 0.35$, $R_{vario} = 0.18$, deadband gate $\varepsilon = 0.10\text{ m/s}$. Optimal balance between immediate thermal response and stationary silence.
+- **`SENSITIVE` (Réactif):** $\sigma_a^2 = 2.5\text{ m}^2/\text{s}^4$, $R_{baro} = 0.15$, $R_{vario} = 0.08$, deadband gate $\varepsilon = 0.06\text{ m/s}$. Low latency for coring weak, narrow thermals.
+
+### Stationary Noise Gate (Deadband Clamp)
+When motionless or hovering near zero vertical speed ($|V_z| < \varepsilon$), `VarioKalmanFilter.getGatedVz()` clamps output strictly to `0.0 m/s`. This completely stabilizes cockpit numeric displays and eliminates false elevation accumulation.
+
+### Experimental IMU Sensor Fusion (`isImuAssistEnabled`)
+Pilots can activate experimental smartphone IMU assistance from the **Filtrage** tab in the Diagnostic Modal:
+- **Phone Sensors Utilized:** `Sensor.TYPE_ROTATION_VECTOR` and `Sensor.TYPE_LINEAR_ACCELERATION`.
+- **World-Frame Gravity Projection:** The linear acceleration vector is rotated into Earth's navigational reference frame using the pre-allocated orientation matrix $\mathbf{R}$:
+  $$a_{z, world} = R[6] a_x + R[7] a_y + R[8] a_z$$
+- **Vibration Deadband:** Vibrations and pilot harness tremors $< 0.15\text{ m/s}^2$ are rejected to prevent false climb triggers.
+- **Physical Integration in State Extrapolation:**
+  $$h_{k|k-1} = h_{k-1} + V_z \Delta t + \frac{1}{2} a_{z, world} \Delta t^2$$
+  $$V_{z, k|k-1} = V_{z, k-1} + a_{z, world} \Delta t$$
+- **Zero Battery Draw when Disabled:** Sensors are dynamically unregistered when `isImuAssistEnabled = false`, preventing unnecessary power consumption.
+
+---
+
+## 7. Vario Audio Engine & Acoustic Mapping
 
 ### Audio Track Configuration
 - **Sample Rate:** 16,000 Hz mono (16-bit signed PCM).
 - **Buffer Size:** 512 samples (~32 ms buffer latency at 16 kHz).
 - **Attributes:** `USAGE_GAME`, `CONTENT_TYPE_SONIFICATION`, `PERFORMANCE_MODE_LOW_LATENCY`.
 - **Amplitude:** 24,000 (~73% of `Short.MAX_VALUE` to avoid speaker saturation and clipping).
+
+### Schmitt-Trigger (Hysteresis) State Machine
+To eliminate threshold chatter (annoying intermittent beeps when $V_z$ flickers around the boundary), `VarioAudioEngine` operates with Schmitt-trigger hysteresis:
+
+- **Climb Audio Activation:** Engages when $V_z \ge +0.30\text{ m/s}$ (`VZ_CLIMB_ENTER`).
+- **Climb Audio Deactivation:** Only disengages when $V_z < +0.18\text{ m/s}$ (`VZ_CLIMB_EXIT`). Hysteresis span = $0.12\text{ m/s}$.
+- **Sink Alarm Activation:** Engages when $V_z \le -2.00\text{ m/s}$ (`VZ_SINK_ENTER`).
+- **Sink Alarm Deactivation:** Only disengages when $V_z > -1.80\text{ m/s}$ (`VZ_SINK_EXIT`). Hysteresis span = $0.20\text{ m/s}$.
 
 ### Acoustic Response Curves & Math (`VarioMath.kt`)
 
@@ -183,19 +227,19 @@ xychart-beta
     line [400, 570, 787, 1004, 1148, 1200]
 ```
 
-1. **Climb Mode ($V_z \ge +0.3\text{ m/s}$):**
+1. **Climb Mode ($V_z \ge +0.3\text{ m/s}$ enter, $\ge +0.18\text{ m/s}$ maintain):**
    - Generates intermittent beeps (pulse-width modulated sine wave).
    - Frequency: Ramps linearly from **400 Hz** ($V_z = 0.3\text{ m/s}$) to **1,200 Hz** ($V_z \ge 5.0\text{ m/s}$).
    - Duty Cycle (Tone ON ratio): Ramps from **40%** to **85%**.
    - Beep Period: Decreases from **10,667 samples** (~1.5 beeps/sec) down to **2,667 samples** (~6.0 beeps/sec) as lift strengthens.
    - Continuous phase accumulator tracking: $Phase = (Phase + 2\pi \cdot f / 16000) \pmod{2\pi}$ to prevent phase discontinuity clicks.
 
-2. **Sink Alarm Mode ($V_z \le -2.0\text{ m/s}$):**
+2. **Sink Alarm Mode ($V_z \le -2.0\text{ m/s}$ enter, $\le -1.8\text{ m/s}$ maintain):**
    - Emits a continuous, urgent descending tone.
    - Frequency: Transitions from **400 Hz** at $-2.0\text{ m/s}$ down to **200 Hz** at severe sink ($-8.0\text{ m/s}$).
    - Duty Cycle: 100% continuous.
 
-3. **Deadband ($ -2.0\text{ m/s} < V_z < +0.3\text{ m/s}$):**
+3. **Deadband ($ -1.8\text{ m/s} < V_z < +0.18\text{ m/s}$):**
    - Complete silence (zeroed PCM buffer) to maintain pilot focus during normal glide.
 
 ---
@@ -270,15 +314,23 @@ stateDiagram-v2
 
 ---
 
-## 10. Hike & Fly Mode Architecture
+## 10. Multi-Sport & Hike & Fly Architecture
 
 ### Overview & Lifecycle Model
-VarioAppli includes a specialized **Hike & Fly** mode (`FlightMode.HIKE_AND_FLY`) allowing pilots to record continuous multi-sport sessions that encompass the uphill hike (approach, mountaineering, skinning) and the paragliding descent in a single GPX flight track:
+VarioAppli includes a multi-sport architecture centered on `ActivityType`:
+- `SIMPLE_FLIGHT` ("Vol Solo"): Classic paragliding flight cockpit with climb/sink audio and $V_z$ ladder gauge.
+- `HIKE_AND_FLY` ("Hike & Fly"): Two-phase ascent + flight session with mid-session transition dialog.
+- `HIKING` ("Randonnée"): Mountain hiking session with $D^+/D^-$ elevation gain/loss meters and average pace.
+- `RUNNING` ("Course à pied"): Trail/running session with elevation and pace telemetry.
+- `SKI_TOURING` ("Ski de rando"): Backcountry ski touring with elevation tracking.
+
+Each activity type maps to a corresponding `FlightMode` and `SessionPhase` (`HIKING` for non-flight ground activities, `FLYING` for paragliding), ensuring zero-allocation state machine compatibility while dynamically reconfiguring the Compose UI.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Standby: IDLE Phase
-    Standby --> Hiking: ACTION_START_FLIGHT (Mode: HIKE_AND_FLY)
+    Standby --> Hiking: ACTION_START_FLIGHT (Activity: Hike / Run / Ski / Hike&Fly)
+    Standby --> Flying: ACTION_START_FLIGHT (Activity: Vol Solo)
     state Hiking {
         [*] --> MuteAudio: audioEngine.isFlightActive = false
         TrackAscent --> TrackAscent: Accumulate Elevation D+ & D-, Average Pace
@@ -348,7 +400,48 @@ When a GPX flight track is loaded or reviewed on the map, `GpxTrackManager.compu
 
 ---
 
-## 12. Automated Testing & Verification Strategy
+## 13. Strava API & Synchronization Subsystem (`StravaManager.kt`)
+
+### Architecture & Security Model
+The Strava synchronization engine interfaces with the Strava V3 REST API without external heavyweight HTTP dependencies, using native `HttpURLConnection` and Android `org.json`:
+
+```mermaid
+sequenceDiagram
+    participant User as Pilot / UI
+    participant Main as MainActivity
+    participant StravaMgr as StravaManager
+    participant Browser as Chrome / Custom Tab
+    participant StravaAPI as Strava v3 API
+
+    Note over User, StravaAPI: 1. OAuth 2.0 Authorization
+    User->>Main: Tap "Enregistrer + Strava"
+    Main->>StravaMgr: check isAuthenticated()
+    alt Not Authenticated
+        StravaMgr->>Browser: Launch Auth URL (varioappli://strava-auth)
+        Browser->>Main: onNewIntent(uri with code)
+        Main->>StravaMgr: handleAuthCallback(uri)
+        StravaMgr->>StravaAPI: POST /oauth/token (code exchange)
+        StravaAPI-->>StravaMgr: access_token, refresh_token, expires_at
+        StravaMgr->>StravaMgr: Persist encrypted SharedPreferences
+    end
+
+    Note over User, StravaAPI: 2. Multipart GPX Upload & Polling
+    Main->>StravaMgr: uploadGpxToStrava(file, sportType)
+    StravaMgr->>StravaAPI: POST /api/v3/uploads (multipart/form-data)
+    StravaAPI-->>StravaMgr: upload_id
+    StravaMgr->>StravaAPI: GET /api/v3/uploads/{id} (poll status)
+    StravaAPI-->>StravaMgr: activity_id (Processing complete)
+    StravaMgr-->>Main: StravaUploadResult(success=true, activityId)
+    Main-->>User: Display Success ✓ Activity Linked
+```
+
+- **Token Lifecycle:** Automatically checks token expiration (`expires_at`) before every upload and transparently refreshes expired credentials via Strava's token refresh endpoint.
+- **Sport Mapping:** Emits Strava-compatible sport types (`Hike`, `Run`, `BackcountrySki`, `Workout`) based on the session's `ActivityType`.
+- **Zero-GC Fast Path Isolation:** All networking and token operations execute strictly off the fast path within `Dispatchers.IO` coroutines.
+
+---
+
+## 14. Automated Testing & Verification Strategy
 
 The codebase contains a comprehensive unit test suite located in `app/src/test/java/com/vario/app/`:
 
@@ -360,3 +453,4 @@ The codebase contains a comprehensive unit test suite located in `app/src/test/j
 | **Barometric & QNH Math** | `VarioMathTest.kt` | Validates hypsometric formula, ISA pressure conversions, and QNH calculation. |
 | **Map & Navigation Routing** | `MapAndTrackTest.kt` | Validates obstacle avoidance vectors, distance math, and GPX track point creation. |
 | **Hardware Replay Simulation** | `UserLogReplayTest.kt` | Replays real-world flight logs through the parser to ensure robustness against malformed serial data. |
+

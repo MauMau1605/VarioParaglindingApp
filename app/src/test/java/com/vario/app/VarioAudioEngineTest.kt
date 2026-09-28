@@ -155,5 +155,49 @@ class VarioAudioEngineTest {
             assertEquals(0, sample.toInt())
         }
     }
+
+    @Test
+    fun climbHysteresis_engagesAtThresholdAndPersistsUntilExitThreshold() {
+        engine.resetPhaseAndBeep()
+        val buffer = ShortArray(2048)
+
+        // 1. Below enter threshold: should be silence
+        engine.generateBuffer(0.25f, buffer)
+        assertTrue(buffer.all { it == 0.toShort() }, "Vz=0.25 before climb should be silent")
+
+        // 2. Crosses climb enter threshold (>= 0.30 m/s): should engage sound
+        engine.generateBuffer(0.35f, buffer)
+        assertTrue(buffer.any { it != 0.toShort() }, "Vz=0.35 should produce climb audio")
+
+        // 3. Drops back to 0.25 m/s (between exit 0.18 and enter 0.30): MUST stay active due to hysteresis
+        engine.generateBuffer(0.25f, buffer)
+        assertTrue(buffer.any { it != 0.toShort() }, "Vz=0.25 after climb should remain active due to hysteresis")
+
+        // 4. Drops below exit threshold (< 0.18 m/s): MUST silence
+        engine.generateBuffer(0.15f, buffer)
+        assertTrue(buffer.all { it == 0.toShort() }, "Vz=0.15 drops below exit threshold and must silence")
+    }
+
+    @Test
+    fun sinkHysteresis_engagesAtThresholdAndPersistsUntilExitThreshold() {
+        engine.resetPhaseAndBeep()
+        val buffer = ShortArray(500)
+
+        // 1. Above sink enter threshold (-1.90 m/s): should be silence
+        engine.generateBuffer(-1.90f, buffer)
+        assertTrue(buffer.all { it == 0.toShort() }, "Vz=-1.90 before sink enter should be silent")
+
+        // 2. Crosses sink enter threshold (<= -2.00 m/s): should engage sink alarm
+        engine.generateBuffer(-2.10f, buffer)
+        assertTrue(buffer.any { it != 0.toShort() }, "Vz=-2.10 should produce sink audio")
+
+        // 3. Rises to -1.90 m/s (between enter -2.00 and exit -1.80): MUST stay active due to hysteresis
+        engine.generateBuffer(-1.90f, buffer)
+        assertTrue(buffer.any { it != 0.toShort() }, "Vz=-1.90 should remain active due to hysteresis")
+
+        // 4. Rises above exit threshold (> -1.80 m/s): MUST silence
+        engine.generateBuffer(-1.70f, buffer)
+        assertTrue(buffer.all { it == 0.toShort() }, "Vz=-1.70 rises above exit threshold and must silence")
+    }
 }
 

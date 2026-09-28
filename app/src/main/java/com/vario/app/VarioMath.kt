@@ -23,6 +23,13 @@ object VarioMath {
     const val VZ_CLIMB_THRESHOLD = 0.3f
     const val VZ_SINK_THRESHOLD = -2.0f
 
+    /** Hysteresis trigger thresholds to prevent audio chattering */
+    const val VZ_CLIMB_ENTER = 0.30f
+    const val VZ_CLIMB_EXIT = 0.18f
+    const val VZ_SINK_ENTER = -2.00f
+    const val VZ_SINK_EXIT = -1.80f
+    const val VZ_DEADBAND_EPSILON = 0.08f
+
     // ── Climb tone parameters ─────────────────────────────────────────────────
     const val CLIMB_FREQ_MIN = 400.0
     const val CLIMB_FREQ_MAX = 1200.0

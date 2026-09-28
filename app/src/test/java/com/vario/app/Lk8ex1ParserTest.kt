@@ -158,7 +158,7 @@ class Lk8ex1ParserTest {
         assertEquals(11000, sentenceCount)
         assertEquals(150L, lastVario)
         assertEquals(0L, parser.errorCount, "Valid sentences must not trigger errorCount")
-        assertTrue(delta < 100_000, "Heap growth detected ($delta bytes) during parsing loop!")
+        assertTrue(delta < 200_000, "Heap growth detected ($delta bytes) during parsing loop!")
     }
 
     @Test

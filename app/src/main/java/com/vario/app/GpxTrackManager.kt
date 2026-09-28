@@ -162,7 +162,8 @@ object GpxTrackManager {
         startTimeMs: Long,
         durationSec: Long,
         maxAltitudeM: Float,
-        totalDistanceM: Float
+        totalDistanceM: Float,
+        activityType: ActivityType = ActivityType.SIMPLE_FLIGHT
     ): File? {
         val points = getCurrentTrackPoints()
         if (points.isEmpty()) {
@@ -173,7 +174,14 @@ object GpxTrackManager {
         try {
             val dir = getTracksDirectory(context)
             val dateStr = fileDateFormat.format(Date(if (startTimeMs > 0) startTimeMs else System.currentTimeMillis()))
-            val file = File(dir, "flight_$dateStr.gpx")
+            val filePrefix = when (activityType) {
+                ActivityType.SIMPLE_FLIGHT -> "flight"
+                ActivityType.HIKE_AND_FLY -> "hikefly"
+                ActivityType.HIKING -> "hike"
+                ActivityType.RUNNING -> "run"
+                ActivityType.SKI_TOURING -> "skitouring"
+            }
+            val file = File(dir, "${filePrefix}_$dateStr.gpx")
 
             FileWriter(file).use { writer ->
                 writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
@@ -182,10 +190,11 @@ object GpxTrackManager {
                 writer.write("     xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n")
                 writer.write("     xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd\">\n")
                 writer.write("  <metadata>\n")
-                writer.write("    <name>Vol Parapente $dateStr</name>\n")
+                writer.write("    <name>${escapeXml(activityType.label)} $dateStr</name>\n")
                 val startIso = isoDateFormat.format(Date(if (startTimeMs > 0) startTimeMs else points.first().timeMs))
                 writer.write("    <time>$startIso</time>\n")
-                writer.write("    <desc>Duree: ${durationSec}s | Plafond: ${maxAltitudeM.toInt()}m | Distance: ${totalDistanceM.toInt()}m</desc>\n")
+                writer.write("    <desc>Type: ${escapeXml(activityType.label)} | Duree: ${durationSec}s | Plafond: ${maxAltitudeM.toInt()}m | Distance: ${totalDistanceM.toInt()}m</desc>\n")
+                writer.write("    <keywords>${activityType.stravaType}</keywords>\n")
                 writer.write("  </metadata>\n")
 
                 // Write Waypoints (mode switch markers, takeoff, summit, landing)

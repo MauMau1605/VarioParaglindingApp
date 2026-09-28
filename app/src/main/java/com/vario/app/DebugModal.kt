@@ -75,10 +75,12 @@ fun DebugModal(
     onRequestUsbPermission: () -> Unit,
     onSetBaudRate: (Int) -> Unit,
     onTestAudio: (Float) -> Unit,
-    onStopAudioTest: () -> Unit
+    onStopAudioTest: () -> Unit,
+    onSetFilterPreset: (FilterPreset) -> Unit = {},
+    onToggleImuAssist: (Boolean) -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("GPS", "USB & LK8EX1", "Audio", "Console Logs", "Batterie")
+    val tabs = listOf("GPS", "USB & LK8EX1", "Audio", "Filtrage", "Console Logs", "Batterie")
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -179,8 +181,9 @@ fun DebugModal(
                         0 -> GpsDiagnosticTab(varioData)
                         1 -> UsbDiagnosticTab(varioData, onRequestUsbPermission, onSetBaudRate)
                         2 -> AudioDiagnosticTab(onTestAudio, onStopAudioTest)
-                        3 -> ConsoleLogsTab()
-                        4 -> BatteryOptimizationTab()
+                        3 -> FilterDiagnosticTab(varioData, onSetFilterPreset, onToggleImuAssist)
+                        4 -> ConsoleLogsTab()
+                        5 -> BatteryOptimizationTab()
                     }
                 }
             }
@@ -410,7 +413,144 @@ private fun AudioDiagnosticTab(
     }
 }
 
-// ── Tab 4: Console Logs ──────────────────────────────────────────────────────
+// ── Tab 4: Filtrage & Kalman ─────────────────────────────────────────────────
+
+@Composable
+private fun FilterDiagnosticTab(
+    data: VarioData,
+    onSetFilterPreset: (FilterPreset) -> Unit,
+    onToggleImuAssist: (Boolean) -> Unit
+) {
+    val scrollState = rememberScrollState()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        DiagnosticCard(title = "Mode de filtrage Kalman") {
+            Text(
+                text = "Ajustez la réactivité du variomètre et la suppression du bruit selon vos conditions de vol et votre capteur.",
+                fontSize = 13.sp,
+                color = Color(0xFF94A3B8)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterPreset.values().forEach { preset ->
+                    val isSelected = data.filterPreset == preset
+                    Button(
+                        onClick = { onSetFilterPreset(preset) },
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isSelected) Color(0xFF38BDF8) else Color(0xFF1E293B)
+                        )
+                    ) {
+                        Text(
+                            text = preset.label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) Color(0xFF090D14) else Color.White
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = data.filterPreset.description,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF38BDF8)
+            )
+        }
+
+        DiagnosticCard(title = "Comparatif en temps réel (Vz)") {
+            DiagRow(
+                "Vz filtrée (Audio/UI)",
+                String.format(java.util.Locale.US, "%+.2f m/s", data.vzMs),
+                if (data.vzMs >= VarioMath.VZ_CLIMB_ENTER) Color(0xFF4ADE80) else if (data.vzMs <= VarioMath.VZ_SINK_ENTER) Color(0xFFF87171) else Color(0xFF8B9CB0)
+            )
+            DiagRow(
+                "Vz brute (Capteur)",
+                String.format(java.util.Locale.US, "%+.2f m/s", data.rawVzMs),
+                Color(0xFF94A3B8)
+            )
+            val isGated = kotlin.math.abs(data.vzMs) < 0.001f && kotlin.math.abs(data.rawVzMs) > 0.001f
+            DiagRow(
+                "Zone morte statique",
+                if (isGated) "Active (bruit éliminé à 0.0 m/s)" else "Inactive",
+                if (isGated) Color(0xFF4ADE80) else Color(0xFF8B9CB0)
+            )
+            val audioZone = when {
+                data.vzMs >= VarioMath.VZ_CLIMB_ENTER -> "Bip Montée actif"
+                data.vzMs <= VarioMath.VZ_SINK_ENTER -> "Alarme Descente active"
+                else -> "Zone neutre (silence)"
+            }
+            DiagRow(
+                "Statut Audio",
+                audioZone,
+                if (data.vzMs >= VarioMath.VZ_CLIMB_ENTER) Color(0xFF4ADE80) else if (data.vzMs <= VarioMath.VZ_SINK_ENTER) Color(0xFFF87171) else Color(0xFF8B9CB0)
+            )
+        }
+
+        DiagnosticCard(title = "Paramètres Hystérésis & Seuils") {
+            DiagRow("Seuil montée ON / OFF", "+0.30 m/s / +0.18 m/s", Color(0xFF4ADE80))
+            DiagRow("Seuil descente ON / OFF", "-2.00 m/s / -1.80 m/s", Color(0xFFF87171))
+            DiagRow("Zone morte (|Vz| < ε)", "±0.08 m/s (clamped to 0.0)", Color(0xFF38BDF8))
+        }
+
+        DiagnosticCard(title = "Assistance IMU / Accéléromètre (Expérimental)") {
+            Text(
+                text = "Fusionne l'accélération verticale du téléphone (az monde) avec le baromètre via le filtre de Kalman pour une réponse instantanée aux thermiques.",
+                fontSize = 13.sp,
+                color = Color(0xFF94A3B8)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            DiagRow(
+                "État de l'assistance IMU",
+                if (data.isImuAssistEnabled) "ACTIF (Fusion Baro + Accel)" else "DÉSACTIVÉ (Baromètre seul)",
+                if (data.isImuAssistEnabled) Color(0xFF4ADE80) else Color(0xFF8B9CB0)
+            )
+            DiagRow(
+                "Accélération Z verticale",
+                String.format(java.util.Locale.US, "%+.2f m/s²", data.imuVerticalAccelMs2),
+                if (kotlin.math.abs(data.imuVerticalAccelMs2) >= 0.15f) Color(0xFF38BDF8) else Color(0xFF8B9CB0)
+            )
+            DiagRow(
+                "Zone morte vibrations",
+                "±0.15 m/s² (seuil de réjection)",
+                Color(0xFF8B9CB0)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Button(
+                onClick = { onToggleImuAssist(!data.isImuAssistEnabled) },
+                modifier = Modifier.fillMaxWidth().height(42.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (data.isImuAssistEnabled) Color(0xFFDC2626) else Color(0xFF16A34A)
+                )
+            ) {
+                Text(
+                    text = if (data.isImuAssistEnabled) "Désactiver l'assistance IMU" else "Activer l'assistance IMU (Expérimental)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Note : Mode expérimental. Désactivé par défaut pour préserver la batterie. Nécessite que le téléphone soit fixé solidairement au cockpit.",
+                fontSize = 11.sp,
+                color = Color(0xFF64748B)
+            )
+        }
+    }
+}
+
+// ── Tab 5: Console Logs ──────────────────────────────────────────────────────
 
 @Composable
 private fun ConsoleLogsTab() {

@@ -26,6 +26,27 @@ enum class SessionPhase {
 }
 
 /**
+ * Supported activity/sport types for multi-sport recording.
+ */
+enum class ActivityType(val label: String, val emoji: String, val stravaType: String) {
+    SIMPLE_FLIGHT("Vol Solo", "\uD83E\uDE82", "Workout"),
+    HIKE_AND_FLY("Hike & Fly", "\uD83E\uDD7E\uD83E\uDE82", "Hike"),
+    HIKING("Randonnée", "\uD83E\uDD7E", "Hike"),
+    RUNNING("Course à pied", "\uD83C\uDFC3", "Run"),
+    SKI_TOURING("Ski de rando", "\u26F7\uFE0F", "BackcountrySki");
+
+    /**
+     * Returns the corresponding [FlightMode] for backward compatibility with the session state engine.
+     * [SIMPLE_FLIGHT] maps to [FlightMode.NORMAL]; all others map to [FlightMode.HIKE_AND_FLY]
+     * since they share the hiking-style D+/D- display and muted audio.
+     */
+    fun toFlightMode(): FlightMode = when (this) {
+        SIMPLE_FLIGHT -> FlightMode.NORMAL
+        else -> FlightMode.HIKE_AND_FLY
+    }
+}
+
+/**
  * Immutable data class representing the variometer state.
  * Exposed via [StateFlow] from [VarioService] to the UI layer.
  *
@@ -50,6 +71,7 @@ enum class SessionPhase {
  * @property isUsbScanning Whether the service is actively scanning for a USB connection (30s timeout).
  * @property sensorMode Current sensor operating mode ([SensorMode.BARO_AND_GPS] or [SensorMode.GPS_ONLY]).
  * @property flightMode Current flight mode ([FlightMode.NORMAL] or [FlightMode.HIKE_AND_FLY]).
+ * @property activityType Specific sport/activity type for multi-sport recording and Strava sync.
  * @property sessionPhase Current session phase ([SessionPhase.IDLE], [SessionPhase.HIKING], or [SessionPhase.FLYING]).
  * @property elevationGainM Cumulative positive elevation gain (D+) from the beginning of the session, in meters.
  * @property elevationLossM Cumulative elevation loss (D-) from the beginning of the session, in meters.
@@ -91,6 +113,7 @@ data class VarioData(
     val isUsbScanning: Boolean = false,
     val sensorMode: SensorMode = SensorMode.GPS_ONLY,
     val flightMode: FlightMode = FlightMode.NORMAL,
+    val activityType: ActivityType = ActivityType.SIMPLE_FLIGHT,
     val sessionPhase: SessionPhase = SessionPhase.IDLE,
     val elevationGainM: Float = 0f,
     val elevationLossM: Float = 0f,
@@ -113,5 +136,9 @@ data class VarioData(
     val crcErrorsCount: Long = 0L,
     val lastRawSentence: String = "",
     val lastRawPressurePa: Long = 0L,
-    val lastRawVarioCmS: Long = 0L
+    val lastRawVarioCmS: Long = 0L,
+    val filterPreset: FilterPreset = FilterPreset.BALANCED,
+    val rawVzMs: Float = 0f,
+    val isImuAssistEnabled: Boolean = false,
+    val imuVerticalAccelMs2: Float = 0f
 )

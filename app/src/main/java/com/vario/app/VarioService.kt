@@ -12,6 +12,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
@@ -68,7 +72,7 @@ import kotlinx.coroutines.launch
  * They must **never** create JVM objects (no String, no Array, no boxing).
  * All parser state lives in pre-allocated primitive fields.
  */
-class VarioService : Service(), Lk8ex1Parser.Listener {
+class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
 
     // ── Public API ───────────────────────────────────────────────────────────
 
@@ -99,6 +103,12 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
         const val ACTION_PAUSE_FLIGHT = "com.vario.app.ACTION_PAUSE_FLIGHT"
         const val ACTION_RESUME_FLIGHT = "com.vario.app.ACTION_RESUME_FLIGHT"
         const val EXTRA_SAVE_TRACK = "com.vario.app.EXTRA_SAVE_TRACK"
+        const val ACTION_SET_ACTIVITY_TYPE = "com.vario.app.ACTION_SET_ACTIVITY_TYPE"
+        const val EXTRA_ACTIVITY_TYPE = "com.vario.app.EXTRA_ACTIVITY_TYPE"
+        const val ACTION_SET_FILTER_PRESET = "com.vario.app.ACTION_SET_FILTER_PRESET"
+        const val EXTRA_FILTER_PRESET = "com.vario.app.EXTRA_FILTER_PRESET"
+        const val ACTION_SET_IMU_ASSIST = "com.vario.app.ACTION_SET_IMU_ASSIST"
+        const val EXTRA_IMU_ASSIST = "com.vario.app.EXTRA_IMU_ASSIST"
         const val USB_SCAN_TIMEOUT_SEC = 30
 
         val SUPPORTED_BAUD_RATES = intArrayOf(115200, 57600, 38400, 19200, 9600)
@@ -108,6 +118,24 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
             private set
 
         /**
+         * Sets the filter preset ([FilterPreset.SMOOTH], [FilterPreset.BALANCED], [FilterPreset.SENSITIVE]).
+         */
+        fun setFilterPreset(preset: FilterPreset) {
+            instance?.kalmanFilter?.preset = preset
+            val current = _dataFlow.value
+            _dataFlow.value = current.copy(filterPreset = preset)
+        }
+
+        /**
+         * Enables or disables experimental IMU acceleration assist.
+         */
+        fun setImuAssist(enabled: Boolean) {
+            instance?.setImuAssistInternal(enabled)
+            val current = _dataFlow.value
+            _dataFlow.value = current.copy(isImuAssistEnabled = enabled)
+        }
+
+        /**
          * Sets the flight mode ([FlightMode.NORMAL] or [FlightMode.HIKE_AND_FLY]) when standby.
          */
         fun setFlightMode(mode: FlightMode) {
@@ -115,6 +143,23 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
             if (current.sessionPhase == SessionPhase.IDLE) {
                 instance?.flightMode = mode
                 _dataFlow.value = current.copy(flightMode = mode)
+            }
+        }
+
+        /**
+         * Sets the activity type for multi-sport recording when standby.
+         * Also sets the corresponding flight mode for backward compatibility.
+         */
+        fun setActivityType(type: ActivityType) {
+            val current = _dataFlow.value
+            if (current.sessionPhase == SessionPhase.IDLE) {
+                val mode = type.toFlightMode()
+                instance?.activityType = type
+                instance?.flightMode = mode
+                _dataFlow.value = current.copy(
+                    activityType = type,
+                    flightMode = mode
+                )
             }
         }
 
@@ -424,16 +469,85 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
 
     // ── Barometer filtering state (zero-allocation fast path) ─────────────────
 
+    val kalmanFilter = VarioKalmanFilter()
     private var lastBaroAltM: Float = Float.NaN
     private var lastBaroTimeMs: Long = 0L
     private var smoothedBaroVz: Float = 0f
     private var lastDiagLogTimeMs: Long = 0L
+
+    // ── IMU (Accelerometer & Gyroscope) Experimental Assist ─────────────────
+    private var sensorManager: SensorManager? = null
+    private var linearAccelSensor: Sensor? = null
+    private var rotationVectorSensor: Sensor? = null
+    private var isImuAssistActive: Boolean = false
+    private val rotationMatrix = FloatArray(9)
+    @Volatile
+    private var latestVerticalAccelMs2: Float = 0f
+
+    fun setImuAssistInternal(enabled: Boolean) {
+        isImuAssistActive = enabled
+        kalmanFilter.isImuAssistEnabled = enabled
+        if (enabled) {
+            startImuSensors()
+            DebugLogger.log(TAG, "Experimental IMU Accel-Assist enabled", DebugLogger.Level.INFO)
+        } else {
+            stopImuSensors()
+            latestVerticalAccelMs2 = 0f
+            DebugLogger.log(TAG, "Experimental IMU Accel-Assist disabled", DebugLogger.Level.INFO)
+        }
+    }
+
+    private fun startImuSensors() {
+        if (sensorManager == null) {
+            sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        }
+        val sm = sensorManager ?: return
+        rotationVectorSensor = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+            ?: sm.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+        linearAccelSensor = sm.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+            ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+        rotationVectorSensor?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        linearAccelSensor?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+    }
+
+    private fun stopImuSensors() {
+        sensorManager?.unregisterListener(this)
+        rotationVectorSensor = null
+        linearAccelSensor = null
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event == null || !isImuAssistActive) return
+        when (event.sensor.type) {
+            Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GAME_ROTATION_VECTOR -> {
+                SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+            }
+            Sensor.TYPE_LINEAR_ACCELERATION -> {
+                val ax = event.values[0]
+                val ay = event.values[1]
+                val az = event.values[2]
+                latestVerticalAccelMs2 = rotationMatrix[6] * ax + rotationMatrix[7] * ay + rotationMatrix[8] * az
+            }
+            Sensor.TYPE_ACCELEROMETER -> {
+                val ax = event.values[0]
+                val ay = event.values[1]
+                val az = event.values[2]
+                latestVerticalAccelMs2 = rotationMatrix[6] * ax + rotationMatrix[7] * ay + rotationMatrix[8] * az - 9.81f
+            }
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        // No-op
+    }
 
     fun isSerialPortOpen(): Boolean = serialPort?.isOpen == true
 
     // ── Flight session state ─────────────────────────────────────────────────
 
     private var flightMode: FlightMode = FlightMode.NORMAL
+    private var activityType: ActivityType = ActivityType.SIMPLE_FLIGHT
     private var sessionPhase: SessionPhase = SessionPhase.IDLE
     private var isFlightActive: Boolean = false
     private var isFlightPaused: Boolean = false
@@ -606,6 +720,19 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                     DebugLogger.log(TAG, "Flight mode set to: $newMode", DebugLogger.Level.INFO)
                 }
             }
+            ACTION_SET_ACTIVITY_TYPE -> {
+                val typeStr = intent.getStringExtra(EXTRA_ACTIVITY_TYPE)
+                val newType = ActivityType.values().firstOrNull { it.name == typeStr } ?: ActivityType.SIMPLE_FLIGHT
+                if (sessionPhase == SessionPhase.IDLE) {
+                    activityType = newType
+                    flightMode = newType.toFlightMode()
+                    _dataFlow.value = _dataFlow.value.copy(
+                        activityType = newType,
+                        flightMode = flightMode
+                    )
+                    DebugLogger.log(TAG, "Activity type set to: $newType (mode: $flightMode)", DebugLogger.Level.INFO)
+                }
+            }
             ACTION_START_FLIGHT, ACTION_RESET_TAKEOFF -> {
                 isFlightActive = true
                 isFlightPaused = false
@@ -637,6 +764,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 lastBaroTimeMs = 0L
                 smoothedBaroVz = 0f
                 lastDiagLogTimeMs = 0L
+                kalmanFilter.reset(currentAlt)
 
                 acquireWakeLock()
 
@@ -654,8 +782,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                                 latitude = currentLoc.latitude,
                                 longitude = currentLoc.longitude,
                                 altitudeM = currentAltM,
-                                name = "Départ Rando",
-                                description = "Début montée Hike & Fly (${currentAltM.toInt()} m)",
+                                name = "Départ ${activityType.label}",
+                                description = "Début ${activityType.label} (${currentAltM.toInt()} m)",
                                 timeMs = System.currentTimeMillis(),
                                 symbol = "Trailhead"
                             )
@@ -686,6 +814,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                     isFlightActive = true,
                     isFlightPaused = false,
                     flightMode = flightMode,
+                    activityType = activityType,
                     sessionPhase = sessionPhase,
                     elevationGainM = 0f,
                     elevationLossM = 0f,
@@ -714,6 +843,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                     lastFlightElevationAltM = alt
                     smoothedGpsVz = 0f
                     smoothedBaroVz = 0f
+                    kalmanFilter.reset(alt)
                     audioEngine?.isFlightActive = true // Un-mutes and starts variometer audio!
                     if (currentLoc != null) {
                         GpxTrackManager.addWaypoint(
@@ -776,6 +906,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 audioEngine?.currentVz = 0f
                 smoothedGpsVz = 0f
                 smoothedBaroVz = 0f
+                kalmanFilter.reset(0f)
                 _dataFlow.value = _dataFlow.value.copy(
                     isFlightActive = false,
                     isFlightPaused = false,
@@ -791,8 +922,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                     val currentLoc = lastKnownLocation
                     if (currentLoc != null) {
                         val alt = if (_dataFlow.value.altitudeM > 0f) _dataFlow.value.altitudeM else currentLoc.altitude.toFloat()
-                        val name = if (wasHike) "Fin Rando" else "Atterrissage"
-                        val desc = if (wasHike) "Fin de l'ascension (${alt.toInt()} m)" else "Atterrissage vol (${alt.toInt()} m)"
+                        val name = if (wasHike) "Fin ${activityType.label}" else "Atterrissage"
+                        val desc = if (wasHike) "Fin ${activityType.label} (${alt.toInt()} m)" else "Atterrissage vol (${alt.toInt()} m)"
                         GpxTrackManager.addWaypoint(
                             GpxWaypoint(
                                 latitude = currentLoc.latitude,
@@ -811,7 +942,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                             startTimeMs = startMs,
                             durationSec = duration,
                             maxAltitudeM = maxAlt,
-                            totalDistanceM = dist
+                            totalDistanceM = dist,
+                            activityType = activityType
                         )
                         if (file != null) {
                             DebugLogger.log(TAG, "GPX track saved: ${file.name}", DebugLogger.Level.INFO)
@@ -880,6 +1012,18 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
                 audioEngine?.stopTestTone()
                 DebugLogger.log(TAG, "Audio test tone stopped", DebugLogger.Level.DEBUG)
             }
+            ACTION_SET_FILTER_PRESET -> {
+                val presetStr = intent.getStringExtra(EXTRA_FILTER_PRESET)
+                val newPreset = FilterPreset.values().firstOrNull { it.name == presetStr } ?: FilterPreset.BALANCED
+                kalmanFilter.preset = newPreset
+                _dataFlow.value = _dataFlow.value.copy(filterPreset = newPreset)
+                DebugLogger.log(TAG, "Filter preset set to: ${newPreset.label}", DebugLogger.Level.INFO)
+            }
+            ACTION_SET_IMU_ASSIST -> {
+                val enabled = intent.getBooleanExtra(EXTRA_IMU_ASSIST, false)
+                setImuAssistInternal(enabled)
+                _dataFlow.value = _dataFlow.value.copy(isImuAssistEnabled = enabled)
+            }
         }
 
         startLocationUpdates()
@@ -888,6 +1032,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
 
     override fun onDestroy() {
         instance = null
+        stopImuSensors()
         try {
             unregisterReceiver(usbPermissionReceiver)
         } catch (e: Exception) {
@@ -901,6 +1046,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
         usbJob?.cancel()
         usbJob = null
         isFlightActive = false
+        activityType = ActivityType.SIMPLE_FLIGHT
         flightDurationSec = 0L
         maxAltitudeM = 0f
         takeoffLocation = null
@@ -1290,16 +1436,22 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
 
         val distanceToTakeoff = computeDistanceToTakeoff(isFlightActive, _dataFlow.value.distanceToTakeoffM, loc, takeoffLocation)
 
-        // Compute GPS-derived vertical speed (Vz) using monotonic clock and EMA (zero heap allocation)
-        // Active only when flight has started
+        // Compute GPS-derived vertical speed (Vz) using Kalman filter (zero heap allocation)
         val nowElapsedMs = SystemClock.elapsedRealtime()
+        val dtGpsSec = if (lastGpsTimeMs > 0L) ((nowElapsedMs - lastGpsTimeMs) / 1000.0f).coerceIn(0.1f, 5.0f) else 1.0f
         if (isFlightActive) {
-            if (!lastGpsAltitudeM.isNaN() && lastGpsTimeMs > 0L) {
-                val dtSec = (nowElapsedMs - lastGpsTimeMs) / 1000.0f
-                smoothedGpsVz = computeGpsVz(currentGpsAlt, lastGpsAltitudeM, dtSec, smoothedGpsVz)
+            if (!_dataFlow.value.isUsbConnected) {
+                kalmanFilter.predict(dtGpsSec)
+                kalmanFilter.updateGpsAltitude(locAlt)
+                smoothedGpsVz = kalmanFilter.getGatedVz()
+            } else if (!lastGpsAltitudeM.isNaN() && lastGpsTimeMs > 0L) {
+                smoothedGpsVz = computeGpsVz(currentGpsAlt, lastGpsAltitudeM, dtGpsSec, smoothedGpsVz)
             }
         } else {
             smoothedGpsVz = 0f
+            if (!_dataFlow.value.isUsbConnected) {
+                kalmanFilter.reset(locAlt)
+            }
         }
         lastGpsAltitudeM = currentGpsAlt
         lastGpsTimeMs = nowElapsedMs
@@ -1315,6 +1467,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
             _dataFlow.value = current.copy(
                 altitudeM = locAlt,
                 vzMs = audioVz,
+                rawVzMs = kalmanFilter.vz,
+                filterPreset = kalmanFilter.preset,
                 distanceToTakeoffM = distanceToTakeoff,
                 totalDistanceTraveledM = totalDistanceTraveledM,
                 elevationGainM = elevationGainM,
@@ -1389,37 +1543,27 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
             maxAltitudeM = calculatedAlt
         }
 
-        // ── Fast path: calculate Vz from barometric difference or native LK8EX1 ──
-        val hasNativeVario = varioCmS != 9999L
-        val vz: Float
-        if (isFlightActive) {
-            if (hasNativeVario) {
-                vz = varioCmS / 100f
-                lastBaroAltM = calculatedAlt
-                lastBaroTimeMs = nowMs
-            } else {
-                if (!lastBaroAltM.isNaN() && lastBaroTimeMs > 0L) {
-                    val dtSec = (nowMs - lastBaroTimeMs) / 1000f
-                    if (dtSec in 0.05f..3.0f) {
-                        val rawBaroVz = ((calculatedAlt - lastBaroAltM) / dtSec).coerceIn(-20f, 20f)
-                        smoothedBaroVz = if (smoothedBaroVz == 0f) rawBaroVz else (smoothedBaroVz * 0.65f + rawBaroVz * 0.35f)
-                        lastBaroAltM = calculatedAlt
-                        lastBaroTimeMs = nowMs
-                    } else if (dtSec > 3.0f) {
-                        lastBaroAltM = calculatedAlt
-                        lastBaroTimeMs = nowMs
-                    }
-                } else {
-                    lastBaroAltM = calculatedAlt
-                    lastBaroTimeMs = nowMs
-                }
-                vz = smoothedBaroVz
-            }
+        // ── Fast path: Kalman Filter for vertical speed & altitude smoothing ──
+        val hasNativeVario = varioCmS != 9999L && varioCmS != 99999L
+        val dtSec = if (lastBaroTimeMs > 0L) ((nowMs - lastBaroTimeMs) / 1000f).coerceIn(0.01f, 3.0f) else 0.1f
+        lastBaroAltM = calculatedAlt
+        lastBaroTimeMs = nowMs
+
+        val rawVz: Float
+        if (hasNativeVario) {
+            rawVz = varioCmS / 100f
+            kalmanFilter.predictWithAcceleration(dtSec, latestVerticalAccelMs2)
+            kalmanFilter.updateAltitudeAndVario(calculatedAlt, rawVz)
         } else {
-            lastBaroAltM = calculatedAlt
-            lastBaroTimeMs = nowMs
-            smoothedBaroVz = 0f
-            vz = 0f
+            kalmanFilter.predictWithAcceleration(dtSec, latestVerticalAccelMs2)
+            kalmanFilter.updateBaroAltitude(calculatedAlt)
+            rawVz = kalmanFilter.vz
+        }
+
+        val vz: Float = if (isFlightActive) {
+            kalmanFilter.getGatedVz()
+        } else {
+            0f
         }
 
         if (isFlightActive && !isFlightPaused && calculatedAlt > 0f) {
@@ -1434,9 +1578,10 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
             lastDiagLogTimeMs = nowMs
             val rawAltStr = if (altitudeM == 99999L) "99999(sentinelle non fournie)" else "${altitudeM}m"
             val rawSentence = parser.getLastRawSentence().trim()
+            val imuStr = if (isImuAssistActive) " az=%+.2fm/s²".format(Locale.US, latestVerticalAccelMs2) else ""
             DebugLogger.log(
                 TAG,
-                "LK8EX1 raw='$rawSentence' -> P=${pressurePa}Pa, rawAlt=$rawAltStr, varioCmS=$varioCmS -> calcAlt=%.1fm, vz=%+.2fm/s (nativeVario=$hasNativeVario)"
+                "LK8EX1 raw='$rawSentence' -> P=${pressurePa}Pa, rawAlt=$rawAltStr, varioCmS=$varioCmS -> calcAlt=%.1fm, vz=%+.2fm/s (raw=%+.2fm/s, preset=${kalmanFilter.preset.label}$imuStr)"
                     .format(Locale.US, calculatedAlt, vz),
                 DebugLogger.Level.INFO
             )
@@ -1447,6 +1592,10 @@ class VarioService : Service(), Lk8ex1Parser.Listener {
         _dataFlow.value = current.copy(
             altitudeM = calculatedAlt,
             vzMs = vz,
+            rawVzMs = rawVz,
+            isImuAssistEnabled = isImuAssistActive,
+            imuVerticalAccelMs2 = latestVerticalAccelMs2,
+            filterPreset = kalmanFilter.preset,
             elevationGainM = elevationGainM,
             elevationLossM = elevationLossM,
             flightElevationGainM = flightElevationGainM,
