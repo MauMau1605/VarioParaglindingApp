@@ -15,6 +15,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -63,6 +65,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -161,9 +164,9 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            VarioCockpitTheme {
+            val varioData by VarioService.dataFlow.collectAsStateWithLifecycle()
+            VarioCockpitTheme(activityType = varioData.activityType) {
                 var currentTab by remember { mutableStateOf(CockpitTab.VARIO) }
-                val varioData by VarioService.dataFlow.collectAsStateWithLifecycle()
 
                 if (currentTab == CockpitTab.VARIO) {
                     VarioScreen(
@@ -359,14 +362,28 @@ class MainActivity : ComponentActivity() {
 // ── Theme ────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun VarioCockpitTheme(content: @Composable () -> Unit) {
+private fun VarioCockpitTheme(
+    activityType: ActivityType = ActivityType.SIMPLE_FLIGHT,
+    content: @Composable () -> Unit
+) {
+    val (bgColor, surfaceColor, primaryColor) = when (activityType) {
+        ActivityType.SIMPLE_FLIGHT -> Triple(Color(0xFF070E1A), Color(0xFF111927), Color(0xFF38BDF8))
+        ActivityType.HIKE_AND_FLY -> Triple(Color(0xFF061512), Color(0xFF0E1F1A), Color(0xFF34D399))
+        ActivityType.HIKING -> Triple(Color(0xFF09150B), Color(0xFF122013), Color(0xFF4ADE80))
+        ActivityType.RUNNING -> Triple(Color(0xFF17090C), Color(0xFF221115), Color(0xFFFB7185))
+        ActivityType.SKI_TOURING -> Triple(Color(0xFF061422), Color(0xFF0E1F30), Color(0xFF38BDF8))
+    }
+
+    val animatedBg by animateColorAsState(targetValue = bgColor, animationSpec = tween(400), label = "themeBg")
+    val animatedSurface by animateColorAsState(targetValue = surfaceColor, animationSpec = tween(400), label = "themeSurface")
+
     MaterialTheme(
         colorScheme = darkColorScheme(
-            background = Color(0xFF090D14),
-            surface = Color(0xFF131926),
+            background = animatedBg,
+            surface = animatedSurface,
             onBackground = Color(0xFFE2E8F0),
             onSurface = Color(0xFFF8FAFC),
-            primary = Color(0xFF4ADE80),
+            primary = primaryColor,
             secondary = Color(0xFFF87171)
         ),
         content = content
@@ -443,9 +460,26 @@ private fun VarioScreen(
         }
     }
 
+    val (topBgColor, bottomBgColor) = when (varioData.activityType) {
+        ActivityType.SIMPLE_FLIGHT -> Pair(Color(0xFF0C1A30), Color(0xFF060912)) // Sky / Aero Navy
+        ActivityType.HIKE_AND_FLY -> Pair(Color(0xFF0A241C), Color(0xFF040F0D))  // Alpine Pine / Emerald
+        ActivityType.HIKING -> Pair(Color(0xFF142410), Color(0xFF061106))        // Mountain Forest Trail
+        ActivityType.RUNNING -> Pair(Color(0xFF281016), Color(0xFF0D0407))       // Dynamic Crimson Ember
+        ActivityType.SKI_TOURING -> Pair(Color(0xFF0B2238), Color(0xFF040E18))   // Alpine Glacier Ice Blue
+    }
+
+    val animatedTopBg by animateColorAsState(targetValue = topBgColor, animationSpec = tween(450), label = "bgTop")
+    val animatedBottomBg by animateColorAsState(targetValue = bottomBgColor, animationSpec = tween(450), label = "bgBottom")
+
     Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(animatedTopBg, animatedBottomBg)
+                )
+            ),
+        color = Color.Transparent
     ) {
         Column(
             modifier = Modifier
@@ -470,10 +504,19 @@ private fun VarioScreen(
             // ── Activity Type Selector or Active Session Banner ─────────
             if (!varioData.isFlightActive) {
                 Box(modifier = Modifier.fillMaxWidth()) {
+                    val accentColor = when (varioData.activityType) {
+                        ActivityType.SIMPLE_FLIGHT -> Color(0xFF38BDF8)
+                        ActivityType.HIKE_AND_FLY -> Color(0xFF34D399)
+                        ActivityType.HIKING -> Color(0xFF4ADE80)
+                        ActivityType.RUNNING -> Color(0xFFFB7185)
+                        ActivityType.SKI_TOURING -> Color(0xFF38BDF8)
+                    }
+                    val animatedAccent by animateColorAsState(targetValue = accentColor, animationSpec = tween(400), label = "selectorAccent")
+
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF131926),
-                        border = BorderStroke(1.dp, Color(0xFF1E293B)),
+                        color = animatedAccent.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, animatedAccent.copy(alpha = 0.5f)),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { isActivityDropdownExpanded = true }
@@ -501,7 +544,7 @@ private fun VarioScreen(
                             Icon(
                                 imageVector = Icons.Filled.ArrowDropDown,
                                 contentDescription = "Choisir activité",
-                                tint = Color(0xFF94A3B8)
+                                tint = animatedAccent
                             )
                         }
                     }
@@ -513,6 +556,13 @@ private fun VarioScreen(
                     ) {
                         ActivityType.values().forEach { type ->
                             val isSelected = varioData.activityType == type
+                            val itemAccent = when (type) {
+                                ActivityType.SIMPLE_FLIGHT -> Color(0xFF38BDF8)
+                                ActivityType.HIKE_AND_FLY -> Color(0xFF34D399)
+                                ActivityType.HIKING -> Color(0xFF4ADE80)
+                                ActivityType.RUNNING -> Color(0xFFFB7185)
+                                ActivityType.SKI_TOURING -> Color(0xFF38BDF8)
+                            }
                             DropdownMenuItem(
                                 text = {
                                     Row(
@@ -524,7 +574,7 @@ private fun VarioScreen(
                                             text = type.label,
                                             fontSize = 14.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) Color(0xFF38BDF8) else Color(0xFFE2E8F0)
+                                            color = if (isSelected) itemAccent else Color(0xFFE2E8F0)
                                         )
                                     }
                                 },
@@ -533,7 +583,7 @@ private fun VarioScreen(
                                     onSetActivityType(type)
                                 },
                                 modifier = Modifier.background(
-                                    if (isSelected) Color(0xFF131926) else Color.Transparent
+                                    if (isSelected) itemAccent.copy(alpha = 0.15f) else Color.Transparent
                                 )
                             )
                         }
@@ -600,7 +650,7 @@ private fun VarioScreen(
                                 .width(40.dp)
                                 .height(170.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF131926))
+                                .background(MaterialTheme.colorScheme.surface)
                                 .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp)),
                             contentAlignment = Alignment.Center
                         ) {
@@ -613,7 +663,7 @@ private fun VarioScreen(
                                 Text(text = "D", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF38BDF8))
                                 Text(text = "±", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFBBF24))
                                 Text(text = "▼", fontSize = 16.sp, color = Color(0xFFF87171))
-                                Text(text = "🥾", fontSize = 16.sp)
+                                Text(text = varioData.activityType.emoji, fontSize = 16.sp)
                             }
                         }
 
@@ -1922,7 +1972,7 @@ private fun StatCard(
 ) {
     Column(
         modifier = modifier
-            .background(Color(0xFF131926), shape = RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), shape = RoundedCornerShape(16.dp))
             .border(1.dp, Color(0xFF1B2436), shape = RoundedCornerShape(16.dp))
             .padding(horizontal = 12.dp, vertical = 12.dp)
     ) {
