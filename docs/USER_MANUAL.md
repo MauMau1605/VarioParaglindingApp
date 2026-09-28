@@ -202,12 +202,14 @@ VarioAppli includes a modern multi-sport activity selector supporting:
 - In standby (before starting a recording), look at the top of the **VARIO** cockpit.
 - Tap the **Activity Dropdown Selector** displaying the current sport and icon (e.g. `🪂 Vol Solo`).
 - Select your desired sport from the menu.
-- If any sport other than **Vol Solo** is selected (Hiking, Running, Ski Touring, or Hike & Fly), the interface automatically shifts to the mountain telemetry layout:
-  - **Dynamic Activity Background:** The app background smoothly animates into a distinct atmospheric theme gradient (Sky Navy for Solo Flight, Alpine Emerald for Hike & Fly, Mountain Moss for Hiking, Dynamic Crimson for Running, and Glacial Frost for Ski Touring).
-  - Variometer acoustic tones are muted.
-  - The $V_z$ ladder is replaced by dual $D^+ / D^-$ gain/loss meters.
-  - Cloudbase is replaced by average pace (`min/km`).
-  - Distance to takeoff is replaced by distance from start (`Dist. départ`).
+- If any sport other than **Vol Solo** is selected (Hiking, Running, Ski Touring, or Hike & Fly), the interface and cockpit background instruments immediately shift to the mountain telemetry layout:
+  - **Uniform Vol Solo Cockpit Palette:** The application preserves the high-contrast Vol Solo dark theme for all activities to guarantee maximum daylight readability.
+  - **Immediate Telemetry Layout Preview:** The screen background instruments switch directly to the sport's dedicated metrics:
+    - The central area switches from the $V_z$ ladder gauge to the dual $D^+ / D^-$ (gain/loss) elevation meters with the sport's icon badge (`▲ D ± ▼`).
+    - The status text reads `"Prêt au départ ([Activité])"`.
+    - Cloudbase is replaced by average pace (`Allure moy.`).
+    - Distance to takeoff is replaced by distance from start (`Dist. départ`).
+  - Variometer acoustic beeps remain muted for non-flight sports.
 - The main action button dynamically updates to **"DÉMARRER [ACTIVITÉ]"**.
 
 ### 2. Multi-Sport & Hike Ascent Telemetry
