@@ -398,6 +398,8 @@ private fun VarioScreen(
     var showDebugModal by remember { mutableStateOf(false) }
     var showHikeTransitionDialog by remember { mutableStateOf(false) }
     var showSaveConfirmDialog by remember { mutableStateOf(false) }
+    var isStravaUploading by remember { mutableStateOf(false) }
+    var stravaUploadResult by remember { mutableStateOf<String?>(null) }
     var showResumeDialog by remember { mutableStateOf(false) }
     var flyMetricViewIndex by remember { mutableStateOf(0) }
     var isActivityDropdownExpanded by remember { mutableStateOf(false) }
@@ -1281,11 +1283,9 @@ private fun VarioScreen(
                 else -> "le vol"
             }
             val durationText = formatDuration(varioData.flightDurationSec)
-            var isStravaUploading by remember { mutableStateOf(false) }
-            var stravaUploadResult by remember { mutableStateOf<String?>(null) }
 
             AlertDialog(
-                onDismissRequest = { showSaveConfirmDialog = false },
+                onDismissRequest = { if (!isStravaUploading) showSaveConfirmDialog = false },
                 containerColor = Color(0xFF1E293B),
                 titleContentColor = Color.White,
                 textContentColor = Color(0xFFCBD5E1),
@@ -1398,8 +1398,11 @@ private fun VarioScreen(
                                         stravaUploadResult = "✗ Erreur : ${e.message}"
                                     }
                                     isStravaUploading = false
+                                    // Auto-dismiss dialog after a short delay so user sees the result
+                                    kotlinx.coroutines.delay(2000)
+                                    showSaveConfirmDialog = false
+                                    stravaUploadResult = null
                                 }
-                                showSaveConfirmDialog = false
                             },
                             enabled = !isStravaUploading,
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFC4C02)),
