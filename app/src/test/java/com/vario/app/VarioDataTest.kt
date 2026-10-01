@@ -47,6 +47,7 @@ class VarioDataTest {
         assertEquals(null, defaultData.distanceToTakeoffM)
         assertEquals(false, defaultData.gpsFixAcquired)
         assertEquals(false, defaultData.isCalibrated)
+        assertEquals(null, defaultData.estimatedAglM)
 
         val customData = VarioData(
             altitudeM = 1200f,
@@ -56,7 +57,8 @@ class VarioDataTest {
             isCalibrated = true,
             latitude = 45.1885,
             longitude = 5.7245,
-            gpsAltitudeM = 1205f
+            gpsAltitudeM = 1205f,
+            estimatedAglM = 450.5f
         )
         assertEquals(340.5f, customData.distanceToTakeoffM)
         assertEquals(true, customData.gpsFixAcquired)
@@ -64,6 +66,7 @@ class VarioDataTest {
         assertEquals(45.1885, customData.latitude)
         assertEquals(5.7245, customData.longitude)
         assertEquals(1205f, customData.gpsAltitudeM)
+        assertEquals(450.5f, customData.estimatedAglM)
     }
 
     @Test

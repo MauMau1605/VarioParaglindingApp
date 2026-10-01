@@ -980,7 +980,7 @@ private fun VarioScreen(
                 )
             }
 
-            // ── Altitude Readout ─────────────────────────────────────────
+            // ── Altitude Readout & Ground Clearance (AGL) ─────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -988,31 +988,89 @@ private fun VarioScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
-                Row(verticalAlignment = Alignment.Bottom) {
+                // Left column: Absolute altitude (MSL / QNH)
+                Column {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = formatAlt(varioData.altitudeM),
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            lineHeight = 48.sp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "m",
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color(0xFF8B9CB0),
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                    }
                     Text(
-                        text = formatAlt(varioData.altitudeM),
-                        fontSize = 48.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White,
-                        lineHeight = 48.sp
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "m",
-                        fontSize = 19.sp,
+                        text = "Altitude (MSL)",
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Normal,
-                        color = Color(0xFF8B9CB0),
-                        modifier = Modifier.padding(bottom = 6.dp)
+                        color = Color(0xFF8B9CB0)
                     )
                 }
 
-                Text(
-                    text = "Altitude",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFF8B9CB0),
-                    modifier = Modifier.padding(bottom = 6.dp)
-                )
+                // Right column: Estimated clearance above ground (AGL)
+                Column(
+                    horizontalAlignment = Alignment.End
+                ) {
+                    val agl = varioData.estimatedAglM
+                    if (agl != null) {
+                        val aglDisplay = if (agl >= 0f) formatAlt(agl) else "-${formatAlt(-agl)}"
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = "~$aglDisplay",
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF38BDF8),
+                                lineHeight = 32.sp
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "m",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = Color(0xFF38BDF8),
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
+                        Text(
+                            text = "Sol (AGL)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF38BDF8)
+                        )
+                    } else {
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = "---",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF64748B),
+                                lineHeight = 28.sp
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "m",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = Color(0xFF64748B),
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
+                        Text(
+                            text = "Sol (GPS req.)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                }
             }
 
             // ── Three Info Cards (Pace/Ceiling + Takeoff/Start Distance + Total Distance) ──

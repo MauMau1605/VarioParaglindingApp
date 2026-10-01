@@ -54,8 +54,8 @@ The main interface is divided into two primary tabs: **VARIO** (Flight Instrumen
 |             +2.4 m/s            [======|======]           |
 |          Vertical Speed          Analog Ladder            |
 |                                                           |
-|                 1 845 m                                   |
-|            Barometric Altitude (MSL)                      |
+|         1 845 m                       ~620 m              |
+|      Altitude (MSL)                  Sol (AGL)            |
 |                                                           |
 |   +-----------------------+   +-----------------------+   |
 |   |    Plafond Atteint    |   |    Distance au Déco   |   |
@@ -78,7 +78,8 @@ The main interface is divided into two primary tabs: **VARIO** (Flight Instrumen
 ### Instrument Cards
 - **Digital Vertical Speed ($V_z$):** Large, high-contrast readout in meters per second (m/s). Positive values indicate lift; negative values indicate sink.
 - **Climb / Sink Ladder Gauge:** Dynamic visual scale ($ -5.0\text{ m/s}$ to $+5.0\text{ m/s}$). In thermals, a vibrant green column rises above zero; in sinking air, an amber/red column drops below zero.
-- **Barometric Altitude:** High-precision altitude above mean sea level (MSL) calibrated automatically using the takeoff reference.
+- **Barometric Altitude (MSL):** High-precision altitude above mean sea level (MSL) calibrated automatically using the takeoff reference.
+- **Estimated Ground Clearance (AGL):** Real-time estimated clearance above ground level in cyan (`~620 m Sol (AGL)`), computed dynamically via `TerrainElevationProvider` comparing barometric altitude against local/Open-Meteo elevation models. When waiting for a GPS fix, displays `--- m Sol (GPS req.)`.
 - **Plafond Atteint (Peak Ceiling):** Highest altitude achieved during the current flight session.
 - **Distance au Déco (Takeoff Distance):** Straight-line horizontal distance between the takeoff launch coordinates and current position.
 

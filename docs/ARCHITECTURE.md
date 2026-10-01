@@ -276,6 +276,7 @@ stateDiagram-v2
 - Calculates pilot clearance Above Ground Level ($\text{AGL} = \text{Altitude MSL} - \text{Terrain Elevation}$).
 - Backed by an in-memory thread-safe LRU cache (512 tiles, quantized to ~110m grid).
 - Automatically fetches digital elevation data asynchronously via the Open-Meteo elevation API, with graceful offline fallback to local regional relief models.
+- **Cockpit Telemetry Feed:** `VarioService` listens to elevation updates (`TerrainElevationProvider.addListener`) and maintains a cached ground elevation reference `currentGroundElevationM`. On every location fix and barometric sentence, `VarioService` emits `estimatedAglM` into `VarioData` for instantaneous, zero-allocation display on the primary flight deck.
 
 ### 2. Obstacle & Airspace Avoidance (`ObstacleRoutingEngine.kt`)
 - Maintains geographic definitions of high-risk mountain obstacles (cables, power lines, alpine peaks, restricted airspaces).
@@ -303,7 +304,7 @@ stateDiagram-v2
 ## 9. Jetpack Compose Cockpit & Diagnostic Modal
 
 - **`MainActivity.kt`:** Renders the primary flight cockpit using Jetpack Compose with two main views:
-  - **VARIO Screen:** Large high-contrast digital Vz, analog climb/sink ladder gauge, QNH altitude, ceiling attained, distance to takeoff, flight timer, and mute toggle.
+  - **VARIO Screen:** Large high-contrast digital Vz, analog climb/sink ladder gauge, dual altitude readout (absolute QNH/MSL altitude and real-time cyan estimated ground clearance AGL), ceiling attained, distance to takeoff, flight timer, and mute toggle.
   - **MAP Screen:** Full-screen vector/raster map with pilot heading arrow, thermal breadcrumbs, glide cone reach, and itinerary planning tools.
 - **`DebugModal.kt` & `DebugLogger.kt`:** Built-in engineering diagnostic terminal:
   - Raw LK8EX1 sentence live terminal with ASCII inspection.

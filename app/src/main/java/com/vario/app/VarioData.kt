@@ -93,6 +93,7 @@ enum class ActivityType(val label: String, val emoji: String, val stravaType: St
  * @property validFramesCount Count of successfully parsed LK8EX1 frames.
  * @property crcErrorsCount Count of checksum mismatches or malformed frames.
  * @property lastRawSentence Most recently received raw LK8EX1 sentence string.
+ * @property estimatedAglM Estimated pilot clearance above ground level in meters (Altitude MSL - Terrain Elevation), or null if GPS position is unavailable.
  */
 data class VarioData(
     val altitudeM: Float = 0f,
@@ -140,5 +141,6 @@ data class VarioData(
     val filterPreset: FilterPreset = FilterPreset.BALANCED,
     val rawVzMs: Float = 0f,
     val isImuAssistEnabled: Boolean = false,
-    val imuVerticalAccelMs2: Float = 0f
+    val imuVerticalAccelMs2: Float = 0f,
+    val estimatedAglM: Float? = null
 )

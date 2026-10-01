@@ -569,6 +569,18 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
     private val recentRawBuffer = ByteArray(RECENT_RAW_BUFFER_SIZE)
     private var recentRawIndex = 0
 
+    private var currentGroundElevationM: Float? = null
+    private val terrainElevationListener: () -> Unit = {
+        val current = _dataFlow.value
+        if (current.gpsFixAcquired && (current.latitude != 0.0 || current.longitude != 0.0)) {
+            val ground = TerrainElevationProvider.getElevation(current.latitude, current.longitude)
+            currentGroundElevationM = ground
+            val effectiveAlt = current.altitudeM
+            val agl = effectiveAlt - ground
+            _dataFlow.value = current.copy(estimatedAglM = agl)
+        }
+    }
+
     private val parser = Lk8ex1Parser(this)
 
     /**
@@ -659,6 +671,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
         startTicker()
         startLocationUpdates()
         startUsbScan(timeoutSec = USB_SCAN_TIMEOUT_SEC)
+        TerrainElevationProvider.addListener(terrainElevationListener)
 
         DebugLogger.log(TAG, "VarioService started", DebugLogger.Level.INFO)
     }
@@ -1063,6 +1076,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
         serviceScope?.cancel()
         serviceScope = null
         closeUsb()
+        TerrainElevationProvider.removeListener(terrainElevationListener)
+        currentGroundElevationM = null
         audioEngine?.stop()
         audioEngine = null
         releaseWakeLock()
@@ -1459,6 +1474,9 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
         val current = _dataFlow.value
         val newAltitudeM = if (current.altitudeM <= 0f) locAlt else current.altitudeM
 
+        val groundAlt = TerrainElevationProvider.getElevation(loc.latitude, loc.longitude)
+        currentGroundElevationM = groundAlt
+
         if (!current.isUsbConnected) {
             val audioVz = if (isFlightActive && !isFlightPaused && sessionPhase == SessionPhase.FLYING) smoothedGpsVz else 0f
             // Feed GPS-derived Vz to audio engine only when flight is active and in FLYING phase
@@ -1466,6 +1484,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
 
             _dataFlow.value = current.copy(
                 altitudeM = locAlt,
+                estimatedAglM = locAlt - groundAlt,
                 vzMs = audioVz,
                 rawVzMs = kalmanFilter.vz,
                 filterPreset = kalmanFilter.preset,
@@ -1495,6 +1514,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
         } else {
             _dataFlow.value = current.copy(
                 altitudeM = newAltitudeM,
+                estimatedAglM = newAltitudeM - groundAlt,
                 maxAltitudeM = maxAltitudeM,
                 distanceToTakeoffM = distanceToTakeoff,
                 totalDistanceTraveledM = totalDistanceTraveledM,
@@ -1589,8 +1609,10 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
 
         // ── Slow path: update UI StateFlow (allocates VarioData — off audio thread) ──
         val current = _dataFlow.value
+        val agl = currentGroundElevationM?.let { calculatedAlt - it }
         _dataFlow.value = current.copy(
             altitudeM = calculatedAlt,
+            estimatedAglM = agl,
             vzMs = vz,
             rawVzMs = rawVz,
             isImuAssistEnabled = isImuAssistActive,
