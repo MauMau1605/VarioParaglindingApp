@@ -1352,23 +1352,32 @@ private fun VarioScreen(
                                 isStravaUploading = true
                                 stravaUploadResult = null
                                 // Stop and save first, then upload
+                                val saveStartTime = System.currentTimeMillis()
                                 onStopFlight(true)
                                 coroutineScope.launch(Dispatchers.IO) {
                                     try {
-                                        // Wait a moment for GPX to be written
-                                        kotlinx.coroutines.delay(1500)
                                         if (!StravaManager.isAuthenticated(context)) {
                                             // Open Strava OAuth login
                                             val authUrl = StravaManager.getAuthorizationUrl()
                                             val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(authUrl))
-                                            context.startActivity(browserIntent)
+                                            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                                context.startActivity(browserIntent)
+                                            }
                                             stravaUploadResult = "🔑 Connectez-vous à Strava..."
                                             isStravaUploading = false
                                             return@launch
                                         }
+                                        // Poll for the GPX file written by VarioService (timeout 10s)
                                         val tracksDir = GpxTrackManager.getTracksDirectory(context)
-                                        val latestFile = tracksDir.listFiles { f -> f.name.endsWith(".gpx") }
-                                            ?.maxByOrNull { it.lastModified() }
+                                        var latestFile: java.io.File? = null
+                                        val deadlineMs = System.currentTimeMillis() + 10_000L
+                                        while (System.currentTimeMillis() < deadlineMs) {
+                                            latestFile = tracksDir.listFiles { f -> f.name.endsWith(".gpx") }
+                                                ?.filter { it.lastModified() >= saveStartTime }
+                                                ?.maxByOrNull { it.lastModified() }
+                                            if (latestFile != null) break
+                                            kotlinx.coroutines.delay(250)
+                                        }
                                         if (latestFile != null) {
                                             val result = StravaManager.uploadGpxToStrava(
                                                 context = context,
@@ -1383,7 +1392,7 @@ private fun VarioScreen(
                                                 "✗ Erreur Strava : ${result.error}"
                                             }
                                         } else {
-                                            stravaUploadResult = "✗ Fichier GPX introuvable"
+                                            stravaUploadResult = "✗ Fichier GPX introuvable (timeout)"
                                         }
                                     } catch (e: Exception) {
                                         stravaUploadResult = "✗ Erreur : ${e.message}"
