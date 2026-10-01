@@ -209,5 +209,82 @@ class VarioDataTest {
         assertEquals(SessionPhase.HIKING, SessionPhase.valueOf("HIKING"))
         assertEquals(SessionPhase.FLYING, SessionPhase.valueOf("FLYING"))
     }
+
+    @Test
+    fun visualLayout_hikeVsFlightDistinction() {
+        // 1. SIMPLE_FLIGHT (Vol Solo): flight cockpit in both idle and active flight
+        val soloIdle = VarioData(activityType = ActivityType.SIMPLE_FLIGHT, isFlightActive = false)
+        assertEquals(false, soloIdle.isHikeVisualLayout())
+        assertEquals(true, soloIdle.isFlightVisualLayout())
+
+        val soloActive = VarioData(
+            activityType = ActivityType.SIMPLE_FLIGHT,
+            isFlightActive = true,
+            sessionPhase = SessionPhase.FLYING
+        )
+        assertEquals(false, soloActive.isHikeVisualLayout())
+        assertEquals(true, soloActive.isFlightVisualLayout())
+
+        // 2. HIKING (Randonnée / marche): always hike layout, never flight layout (no AGL)
+        val hikeIdle = VarioData(activityType = ActivityType.HIKING, isFlightActive = false)
+        assertEquals(true, hikeIdle.isHikeVisualLayout())
+        assertEquals(false, hikeIdle.isFlightVisualLayout())
+
+        val hikeActive = VarioData(
+            activityType = ActivityType.HIKING,
+            isFlightActive = true,
+            sessionPhase = SessionPhase.HIKING
+        )
+        assertEquals(true, hikeActive.isHikeVisualLayout())
+        assertEquals(false, hikeActive.isFlightVisualLayout())
+
+        // 3. SKI_TOURING (Ski de rando): always hike layout, never flight layout (no AGL)
+        val skiIdle = VarioData(activityType = ActivityType.SKI_TOURING, isFlightActive = false)
+        assertEquals(true, skiIdle.isHikeVisualLayout())
+        assertEquals(false, skiIdle.isFlightVisualLayout())
+
+        val skiActive = VarioData(
+            activityType = ActivityType.SKI_TOURING,
+            isFlightActive = true,
+            sessionPhase = SessionPhase.HIKING
+        )
+        assertEquals(true, skiActive.isHikeVisualLayout())
+        assertEquals(false, skiActive.isFlightVisualLayout())
+
+        // 4. RUNNING (Course à pied): always hike layout, never flight layout (no AGL)
+        val runIdle = VarioData(activityType = ActivityType.RUNNING, isFlightActive = false)
+        assertEquals(true, runIdle.isHikeVisualLayout())
+        assertEquals(false, runIdle.isFlightVisualLayout())
+
+        val runActive = VarioData(
+            activityType = ActivityType.RUNNING,
+            isFlightActive = true,
+            sessionPhase = SessionPhase.HIKING
+        )
+        assertEquals(true, runActive.isHikeVisualLayout())
+        assertEquals(false, runActive.isFlightVisualLayout())
+
+        // 5. HIKE_AND_FLY: hike layout during standby and ascent, switches to flight layout when flight begins!
+        val hfIdle = VarioData(activityType = ActivityType.HIKE_AND_FLY, isFlightActive = false)
+        assertEquals(true, hfIdle.isHikeVisualLayout())
+        assertEquals(false, hfIdle.isFlightVisualLayout())
+
+        val hfAscent = VarioData(
+            activityType = ActivityType.HIKE_AND_FLY,
+            isFlightActive = true,
+            sessionPhase = SessionPhase.HIKING
+        )
+        assertEquals(true, hfAscent.isHikeVisualLayout())
+        assertEquals(false, hfAscent.isFlightVisualLayout())
+
+        // Flight phase: pilot reached summit and launched ("quand on attaquera le vol")
+        val hfFlight = VarioData(
+            activityType = ActivityType.HIKE_AND_FLY,
+            isFlightActive = true,
+            sessionPhase = SessionPhase.FLYING
+        )
+        assertEquals(false, hfFlight.isHikeVisualLayout())
+        assertEquals(true, hfFlight.isFlightVisualLayout())
+    }
 }
 

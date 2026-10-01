@@ -445,11 +445,7 @@ private fun VarioScreen(
         }
     }
 
-    val isHikeVisualLayout = if (varioData.isFlightActive) {
-        varioData.sessionPhase == SessionPhase.HIKING
-    } else {
-        varioData.activityType != ActivityType.SIMPLE_FLIGHT
-    }
+    val isHikeVisualLayout = varioData.isHikeVisualLayout()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -990,8 +986,8 @@ private fun VarioScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
-                // Left column: Absolute altitude (MSL / QNH)
-                Column {
+                if (isHikeVisualLayout) {
+                    // Hike / Mountain Mode: Standard single Altitude readout without ground clearance
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
                             text = formatAlt(varioData.altitudeM),
@@ -1009,68 +1005,98 @@ private fun VarioScreen(
                             modifier = Modifier.padding(bottom = 6.dp)
                         )
                     }
-                    Text(
-                        text = "Altitude (MSL)",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = Color(0xFF8B9CB0)
-                    )
-                }
 
-                // Right column: Estimated clearance above ground (AGL)
-                Column(
-                    horizontalAlignment = Alignment.End
-                ) {
-                    val agl = varioData.estimatedAglM
-                    if (agl != null) {
-                        val aglDisplay = if (agl >= 0f) formatAlt(agl) else "-${formatAlt(-agl)}"
+                    Text(
+                        text = "Altitude",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = Color(0xFF8B9CB0),
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                } else {
+                    // Flight Mode: Dual Altitude (MSL) & Clearance (AGL) readout
+                    // Left column: Absolute altitude (MSL / QNH)
+                    Column {
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
-                                text = "~$aglDisplay",
-                                fontSize = 32.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF38BDF8),
-                                lineHeight = 32.sp
+                                text = formatAlt(varioData.altitudeM),
+                                fontSize = 48.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                lineHeight = 48.sp
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "m",
-                                fontSize = 16.sp,
+                                fontSize = 19.sp,
                                 fontWeight = FontWeight.Normal,
-                                color = Color(0xFF38BDF8),
-                                modifier = Modifier.padding(bottom = 3.dp)
+                                color = Color(0xFF8B9CB0),
+                                modifier = Modifier.padding(bottom = 6.dp)
                             )
                         }
                         Text(
-                            text = "Sol (AGL)",
+                            text = "Altitude (MSL)",
                             fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF38BDF8)
+                            fontWeight = FontWeight.Normal,
+                            color = Color(0xFF8B9CB0)
                         )
-                    } else {
-                        Row(verticalAlignment = Alignment.Bottom) {
+                    }
+
+                    // Right column: Estimated clearance above ground (AGL)
+                    Column(
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        val agl = varioData.estimatedAglM
+                        if (agl != null) {
+                            val aglDisplay = if (agl >= 0f) formatAlt(agl) else "-${formatAlt(-agl)}"
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(
+                                    text = "~$aglDisplay",
+                                    fontSize = 32.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF38BDF8),
+                                    lineHeight = 32.sp
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "m",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = Color(0xFF38BDF8),
+                                    modifier = Modifier.padding(bottom = 3.dp)
+                                )
+                            }
                             Text(
-                                text = "---",
-                                fontSize = 28.sp,
+                                text = "Sol (AGL)",
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF64748B),
-                                lineHeight = 28.sp
+                                color = Color(0xFF38BDF8)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                        } else {
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(
+                                    text = "---",
+                                    fontSize = 28.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF64748B),
+                                    lineHeight = 28.sp
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "m",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = Color(0xFF64748B),
+                                    modifier = Modifier.padding(bottom = 3.dp)
+                                )
+                            }
                             Text(
-                                text = "m",
-                                fontSize = 15.sp,
+                                text = "Sol (GPS req.)",
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Normal,
-                                color = Color(0xFF64748B),
-                                modifier = Modifier.padding(bottom = 3.dp)
+                                color = Color(0xFF64748B)
                             )
                         }
-                        Text(
-                            text = "Sol (GPS req.)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = Color(0xFF64748B)
-                        )
                     }
                 }
             }

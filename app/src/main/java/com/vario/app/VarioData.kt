@@ -144,3 +144,24 @@ data class VarioData(
     val imuVerticalAccelMs2: Float = 0f,
     val estimatedAglM: Float? = null
 )
+
+/**
+ * Determines whether the current cockpit telemetry state should display the hike/mountain layout
+ * (D+/D- climb metrics, average pace, single altitude readout) as opposed to the flight cockpit
+ * (variometer Vz ladder, ceiling, distance to takeoff, dual MSL/AGL altitude readout).
+ *
+ * Ground sports (Hiking, Ski touring, Running) and the ascent phase of Hike & Fly display the hike layout.
+ * Solo flight and the flight phase of Hike & Fly display the flight layout.
+ */
+fun VarioData.isHikeVisualLayout(): Boolean = if (isFlightActive) {
+    sessionPhase == SessionPhase.HIKING
+} else {
+    activityType != ActivityType.SIMPLE_FLIGHT
+}
+
+/**
+ * Determines whether the flight cockpit instruments (including Above Ground Level AGL clearance)
+ * should be displayed. Inverse of [isHikeVisualLayout].
+ */
+fun VarioData.isFlightVisualLayout(): Boolean = !isHikeVisualLayout()
+

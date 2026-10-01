@@ -78,8 +78,8 @@ The main interface is divided into two primary tabs: **VARIO** (Flight Instrumen
 ### Instrument Cards
 - **Digital Vertical Speed ($V_z$):** Large, high-contrast readout in meters per second (m/s). Positive values indicate lift; negative values indicate sink.
 - **Climb / Sink Ladder Gauge:** Dynamic visual scale ($ -5.0\text{ m/s}$ to $+5.0\text{ m/s}$). In thermals, a vibrant green column rises above zero; in sinking air, an amber/red column drops below zero.
-- **Barometric Altitude (MSL):** High-precision altitude above mean sea level (MSL) calibrated automatically using the takeoff reference.
-- **Estimated Ground Clearance (AGL):** Real-time estimated clearance above ground level in cyan (`~620 m Sol (AGL)`), computed dynamically via `TerrainElevationProvider` comparing barometric altitude against local/Open-Meteo elevation models. When waiting for a GPS fix, displays `--- m Sol (GPS req.)`.
+- **Barometric Altitude (MSL):** High-precision altitude above mean sea level (MSL) calibrated automatically using the takeoff reference. In non-flight ground activities (hiking, ski touring, running) and during the hike ascent phase, displays as a clean single altitude readout without ground clearance.
+- **Estimated Ground Clearance (AGL):** Real-time estimated clearance above ground level in cyan (`~620 m Sol (AGL)`), computed dynamically via `TerrainElevationProvider` comparing barometric altitude against local/Open-Meteo elevation models. Active exclusively in flight mode (`Vol Solo` or once transitioning to flight in `Hike & Fly`). When waiting for a GPS fix, displays `--- m Sol (GPS req.)`.
 - **Plafond Atteint (Peak Ceiling):** Highest altitude achieved during the current flight session.
 - **Distance au Déco (Takeoff Distance):** Straight-line horizontal distance between the takeoff launch coordinates and current position.
 
@@ -208,6 +208,7 @@ VarioAppli includes a modern multi-sport activity selector supporting:
   - **Immediate Telemetry Layout Preview:** The screen background instruments switch directly to the sport's dedicated metrics:
     - The central area switches from the $V_z$ ladder gauge to the dual $D^+ / D^-$ (gain/loss) elevation meters with the sport's icon badge (`▲ D ± ▼`).
     - The status text reads `"Prêt au départ ([Activité])"`.
+    - The altitude row displays the standard single barometric altitude without ground clearance (AGL is hidden on the ground).
     - Cloudbase is replaced by average pace (`Allure moy.`).
     - Distance to takeoff is replaced by distance from start (`Dist. départ`).
   - Variometer acoustic beeps remain muted for non-flight sports.
@@ -230,7 +231,7 @@ When you reach the summit / takeoff launch site and prepare your wing:
      - Places a distinct summit waypoint **"Décollage / Vol"** on the track and map.
      - Un-mutes the acoustic variometer.
      - Locks the current summit coordinates as your official takeoff location.
-     - Restores flight telemetry: $V_z$ climb/sink ladder, Cloudbase ceiling (`Plafond`), and distance to takeoff (`Dist. déco`).
+     - Restores flight telemetry: $V_z$ climb/sink ladder, Cloudbase ceiling (`Plafond`), distance to takeoff (`Dist. déco`), and Estimated Ground Clearance (`Sol (AGL)`).
      - Continues recording your flight in the **same continuous GPX track**.
    - **"⏸️ Pause" (Pause Session):** Pauses tracking and audio while you lay out your paraglider, check lines, and inspect the wind. You can freely explore the map or check airspace clearances.
    - **"⏹️ Terminer l'enregistrement" (End Session):** Prompts you to confirm whether or not to save the hike track (e.g. if conditions are unsuitable to fly and you walk down).

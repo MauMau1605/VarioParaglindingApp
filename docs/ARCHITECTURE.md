@@ -304,7 +304,7 @@ stateDiagram-v2
 ## 9. Jetpack Compose Cockpit & Diagnostic Modal
 
 - **`MainActivity.kt`:** Renders the primary flight cockpit using Jetpack Compose with two main views:
-  - **VARIO Screen:** Large high-contrast digital Vz, analog climb/sink ladder gauge, dual altitude readout (absolute QNH/MSL altitude and real-time cyan estimated ground clearance AGL), ceiling attained, distance to takeoff, flight timer, and mute toggle.
+  - **VARIO Screen:** Large high-contrast digital Vz, analog climb/sink ladder gauge, adaptive altitude readout (dual absolute QNH/MSL altitude and real-time cyan estimated ground clearance AGL in flight mode; clean single MSL altitude readout in ground/hike modes), ceiling attained, distance to takeoff, flight timer, and mute toggle.
   - **MAP Screen:** Full-screen vector/raster map with pilot heading arrow, thermal breadcrumbs, glide cone reach, and itinerary planning tools.
 - **`DebugModal.kt` & `DebugLogger.kt`:** Built-in engineering diagnostic terminal:
   - Raw LK8EX1 sentence live terminal with ASCII inspection.
@@ -372,10 +372,15 @@ Barometric pressure sensor noise or altitude jitter (~0.1 to 0.5 m) can artifici
 - Altitude jitter below the $1.0\text{ m}$ threshold is rejected.
 
 ### Cockpit Adaptive Views & Interactive Telemetry
-- **Hike Telemetry Phase:**
+- **Hike Telemetry Phase (`isHikeVisualLayout`):**
+  - Active during ground activities (Hiking, Ski touring, Running) and the ascent phase of Hike & Fly.
   - `Plafond` (cloudbase) is replaced with **Allure moyenne** (`Allure moy.`, in `MM'SS" min/km`).
   - `Dist. déco` is dynamically renamed to **`Dist. départ`** (distance from starting trailhead).
-  - Main altitude indicator displays dual **`▲ D ± ▼ 🥾`** showing cumulative ascent ($D^+$) and descent ($D^-$) side by side.
+  - Main altitude indicator displays the classic single barometric altitude (`Altitude`), omitting the Above Ground Level (AGL) ground clearance column since clearance is only relevant when airborne.
+  - Central instrument displays dual **`▲ D ± ▼ 🥾`** showing cumulative ascent ($D^+$) and descent ($D^-$) side by side.
+- **Flight Telemetry Phase (`isFlightVisualLayout`):**
+  - Active during solo flight (`SIMPLE_FLIGHT`) and once the flight phase begins in Hike & Fly (`SessionPhase.FLYING`).
+  - Dual altitude display with absolute MSL altitude on the left and cyan estimated clearance above ground level (`Sol (AGL)`) on the right.
 - **Flight 3-View Vertical Metric Cycler:**
   - In `FLYING` phase, clicking the vertical speed readout cycles through 3 distinct pages with pagination dot indicators (`● ○ ○`):
     1. **Page 0 (Vario Instantané):** Standard analog ladder gauge + instantaneous $V_z$ readout.
