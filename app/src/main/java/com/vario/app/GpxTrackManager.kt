@@ -761,3 +761,136 @@ object GpxTrackManager {
         )
     }
 }
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import java.io.FileOutputStream
+import java.io.StringWriter
+import java.text.ParseException
+
+/**
+ * Editable metadata for an existing GPX track that can be modified after recording.
+ */
+data class EditableTrackMetadata(
+    var activityType: ActivityType = ActivityType.SIMPLE_FLIGHT,
+    var totalDistanceM: Float = 0f,
+    var maxAltitudeM: Float = 0f,
+    var description: String = ""
+)
+
+/**
+ * Updates metadata of an existing GPX track file by rewriting the GPX XML with new values.
+ * Returns the updated File if successful, null otherwise.
+ */
+fun updateTrackMetadata(
+    context: Context,
+    file: File,
+    newMetadata: EditableTrackMetadata
+): File? {
+    return try {
+        // Load existing track data
+        val points = loadTrackPoints(file)
+        val waypoints = loadTrackWaypoints(file)
+        val summary = parseTrackSummary(file)
+
+        if (points.isEmpty()) {
+            Log.w(TAG, "Cannot update metadata: no points in track ${file.name}")
+            return null
+        }
+
+        // Reconstruct GPX content with updated metadata
+        val dir = getTracksDirectory(context)
+        val updatedFile = File(dir, "updated_${file.name}")
+
+        val isoDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val fileDateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
+
+        FileWriter(updatedFile).use { writer ->
+            writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+            writer.write("<gpx version=\"1.1\" creator=\"VarioAppli\"\n")
+            writer.write("     xmlns=\"http://www.topografix.com/GPX/1/1\"\n")
+            writer.write("     xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n")
+            writer.write("     xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd\">\n")
+            writer.write("  <metadata>\n")
+            writer.write("    <name>${escapeXml(newMetadata.activityType.label)} ${fileDateFormat.format(Date(file.lastModified()))}</name>\n")
+
+            val startIso = isoDateFormat.format(Date(if (summary != null && summary.startTimeMs > 0) summary.startTimeMs else points.first().timeMs))
+            writer.write("    <time>$startIso</time>\n")
+            writer.write("    <desc>Type: ${escapeXml(newMetadata.activityType.label)} | Distance ajustée: ${newMetadata.totalDistanceM.toInt()}m | Plafond ajusté: ${newMetadata.maxAltitudeM.toInt()}m</desc>\n")
+            writer.write("    <keywords>${newMetadata.activityType.stravaType}</keywords>\n")
+            writer.write("  </metadata>\n")
+
+            // Write Waypoints
+            for (wpt in waypoints) {
+                val wptIso = isoDateFormat.format(Date(if (wpt.timeMs > 0) wpt.timeMs else System.currentTimeMillis()))
+                val descStr = if (wpt.description.isNotEmpty()) "    <desc>${escapeXml(wpt.description)}</desc>\n" else ""
+                val symStr = if (wpt.symbol.isNotEmpty()) "    <sym>${escapeXml(wpt.symbol)}</sym>\n" else ""
+                writer.write(
+                    String.format(
+                        Locale.US,
+                        "  <wpt lat=\"%.6f\" lon=\"%.6f\">\n" +
+                        "    <ele>%.1f</ele>\n" +
+                        "    <time>$wptIso</time>\n" +
+                        "    <name>${escapeXml(wpt.name)}</name>\n" +
+                        "$descStr" +
+                        "$symStr" +
+                        "  </wpt>\n"
+                    )
+                )
+            }
+
+            writer.write("  <trk>\n")
+            writer.write("    <name>Track ${fileDateFormat.format(Date(file.lastModified()))}</name>\n")
+            writer.write("    <trkseg>\n")
+
+            for (pt in points) {
+                val ptIso = isoDateFormat.format(Date(pt.timeMs))
+                val phaseExt = if (pt.phase.isNotEmpty()) "          <phase>${escapeXml(pt.phase)}</phase>\n" else ""
+                writer.write(
+                    String.format(
+                        Locale.US,
+                        "      <trkpt lat=\"%.6f\" lon=\"%.6f\">\n" +
+                        "        <ele>%.1f</ele>\n" +
+                        "        <time>$ptIso</time>\n" +
+                        "        <extensions>\n" +
+                        "          <vz>%.2f</vz>\n" +
+                        "          <speed>%.1f</speed>\n" +
+                        "$phaseExt" +
+                        "        </extensions>\n" +
+                        "      </trkpt>\n",
+                        pt.latitude,
+                        pt.longitude,
+                        pt.altitudeM,
+                        pt.vzMs,
+                        pt.speedKmh
+                    )
+                )
+            }
+
+            writer.write("    </trkseg>\n")
+            writer.write("  </trk>\n")
+            writer.write("</gpx>\n")
+        }
+
+        // Replace original file with updated version
+        val originalPath = file.absolutePath
+        if (!file.delete()) {
+            Log.w(TAG, "Failed to delete original track file before update")
+            return null
+        }
+        if (!updatedFile.renameTo(File(originalPath))) {
+            Log.w(TAG, "Failed to rename updated track file")
+            return null
+        }
+
+        Log.i(TAG, "Updated metadata for track ${file.name}")
+        File(originalPath)
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to update track metadata", e)
+        null
+    }
+}
+
