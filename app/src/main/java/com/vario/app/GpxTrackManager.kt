@@ -89,6 +89,16 @@ data class TrackProfileData(
 )
 
 /**
+ * Editable metadata for an existing GPX track that can be modified after recording.
+ */
+data class EditableTrackMetadata(
+    var activityType: ActivityType = ActivityType.SIMPLE_FLIGHT,
+    var totalDistanceM: Float = 0f,
+    var maxAltitudeM: Float = 0f,
+    var description: String = ""
+)
+
+/**
  * Manager for recording, serializing, parsing, and sharing GPX flight tracks.
  */
 object GpxTrackManager {
@@ -760,30 +770,11 @@ object GpxTrackManager {
             maxSinkVz = maxSink
         )
     }
-}
-import android.app.Activity
-import android.content.Intent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import java.io.FileOutputStream
-import java.io.StringWriter
-import java.text.ParseException
-
-/**
- * Editable metadata for an existing GPX track that can be modified after recording.
- */
-data class EditableTrackMetadata(
-    var activityType: ActivityType = ActivityType.SIMPLE_FLIGHT,
-    var totalDistanceM: Float = 0f,
-    var maxAltitudeM: Float = 0f,
-    var description: String = ""
-)
-
-/**
- * Updates metadata of an existing GPX track file by rewriting the GPX XML with new values.
- * Returns the updated File if successful, null otherwise.
- */
-fun updateTrackMetadata(
+    /**
+     * Updates metadata of an existing GPX track file by rewriting the GPX XML with new values.
+     * Returns the updated File if successful, null otherwise.
+     */
+    fun updateTrackMetadata(
     context: Context,
     file: File,
     newMetadata: EditableTrackMetadata
@@ -800,7 +791,7 @@ fun updateTrackMetadata(
         }
 
         // Reconstruct GPX content with updated metadata
-        val dir = getTracksDirectory(context)
+        val dir = file.parentFile ?: getTracksDirectory(context)
         val updatedFile = File(dir, "updated_${file.name}")
 
         val isoDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
@@ -837,7 +828,10 @@ fun updateTrackMetadata(
                         "    <name>${escapeXml(wpt.name)}</name>\n" +
                         "$descStr" +
                         "$symStr" +
-                        "  </wpt>\n"
+                        "  </wpt>\n",
+                        wpt.latitude,
+                        wpt.longitude,
+                        wpt.altitudeM
                     )
                 )
             }
@@ -893,4 +887,4 @@ fun updateTrackMetadata(
         null
     }
 }
-
+}

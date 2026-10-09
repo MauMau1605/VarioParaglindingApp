@@ -1,13 +1,12 @@
 package com.vario.app
 
 import android.content.Context
-import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import java.io.File
 import java.io.FileWriter
 import java.text.SimpleDateFormat
@@ -17,7 +16,6 @@ import java.util.TimeZone
 /**
  * Unit tests for GpxTrackManager, specifically for the new updateTrackMetadata functionality.
  */
-@RunWith(RobolectricTestRunner::class)
 class GpxTrackManagerTest {
 
     private lateinit var context: Context
@@ -28,9 +26,11 @@ class GpxTrackManagerTest {
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext<Context>()
-        testDir = File(context.cacheDir, "test_tracks")
+        testDir = File(System.getProperty("java.io.tmpdir"), "test_tracks_${System.currentTimeMillis()}")
         testDir.mkdirs()
+        context = mockk<Context>(relaxed = true)
+        every { context.filesDir } returns testDir
+        every { context.cacheDir } returns testDir
     }
 
     @After
@@ -239,7 +239,8 @@ class GpxTrackManagerTest {
 
             assertThat(updatedFile).isNotNull()
             val content = updatedFile?.readText()
-            assertThat(content).contains(activityType.label)
+            val expectedLabel = if (activityType.label.contains("&")) activityType.label.replace("&", "&amp;") else activityType.label
+            assertThat(content).contains(expectedLabel)
             assertThat(content).contains(activityType.stravaType)
         }
     }
@@ -342,7 +343,7 @@ class GpxTrackManagerTest {
             for (i in 0 until numPoints) {
                 writer.write("      <trkpt lat=\"${45.0 + i * 0.01}\" lon=\"${5.0 + i * 0.01}\">\n")
                 writer.write("        <ele>${500 + i * 10}</ele>\n")
-                writer.write("        <time>${isoDateFormat.format(System.currentTimeMillis() + i * 1000)}\\n")
+                writer.write("        <time>${isoDateFormat.format(System.currentTimeMillis() + i * 1000)}</time>\n")
                 writer.write("        <extensions>\n")
                 writer.write("          <vz>2.5</vz>\n")
                 writer.write("          <speed>15.0</speed>\n")
@@ -396,7 +397,7 @@ class GpxTrackManagerTest {
             for (i in 0 until numWaypoints) {
                 writer.write("  <wpt lat=\"${45.5 + i * 0.1}\" lon=\"${5.5 + i * 0.1}\">\n")
                 writer.write("    <ele>${600 + i * 50}</ele>\n")
-                writer.write("    <time>${isoDateFormat.format(System.currentTimeMillis() + i * 2000)}\\n")
+                writer.write("    <time>${isoDateFormat.format(System.currentTimeMillis() + i * 2000)}</time>\n")
                 writer.write("    <name>Waypoint ${i + 1}</name>\n")
                 writer.write("  </wpt>\n")
             }

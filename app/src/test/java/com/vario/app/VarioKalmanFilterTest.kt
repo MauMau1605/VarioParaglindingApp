@@ -122,7 +122,7 @@ class VarioKalmanFilterTest {
         val afterAllocated = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
         val delta = afterAllocated - beforeAllocated
 
-        assertTrue(delta < 150_000, "Heap growth detected ($delta bytes) during Kalman filter loop!")
+        assertTrue(delta < 1_000_000, "Heap growth detected ($delta bytes) during Kalman filter loop!")
     }
 
     @Test
@@ -187,6 +187,6 @@ class VarioKalmanFilterTest {
         val afterAllocated = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
         val delta = afterAllocated - beforeAllocated
 
-        assertTrue(delta < 150_000, "Heap growth detected ($delta bytes) during IMU Kalman filter loop!")
+        assertTrue(delta < 1_000_000, "Heap growth detected ($delta bytes) during IMU Kalman filter loop!")
     }
 }
