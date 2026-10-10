@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -94,7 +95,8 @@ import kotlinx.coroutines.launch
  */
 enum class CockpitTab {
     VARIO,
-    MAP
+    MAP,
+    STATS
 }
 
 class MainActivity : ComponentActivity() {
@@ -165,29 +167,38 @@ class MainActivity : ComponentActivity() {
                 var currentTab by remember { mutableStateOf(CockpitTab.VARIO) }
                 val varioData by VarioService.dataFlow.collectAsStateWithLifecycle()
 
-                if (currentTab == CockpitTab.VARIO) {
-                    VarioScreen(
-                        varioData = varioData,
-                        onStartFlight = { startFlight() },
-                        onPauseFlight = { pauseFlight() },
-                        onResumeFlight = { resumeFlight() },
-                        onStopFlight = { saveTrack -> stopFlight(saveTrack) },
-                        onSetFlightMode = { setFlightMode(it) },
-                        onSetActivityType = { setActivityType(it) },
-                        onProceedToFly = { proceedToFly() },
-                        onToggleMute = { toggleMute() },
-                        onReconnectUsb = { manualReconnectUsb() },
-                        onRequestUsbPermission = { requestUsbPermission() },
-                        onSetBaudRate = { setBaudRate(it) },
-                        onTestAudio = { testAudio(it) },
-                        onStopAudioTest = { stopAudioTest() },
-                        onOpenMap = { currentTab = CockpitTab.MAP }
-                    )
-                } else {
-                    MapScreen(
-                        varioData = varioData,
-                        onBackToVario = { currentTab = CockpitTab.VARIO }
-                    )
+                when (currentTab) {
+                    CockpitTab.VARIO -> {
+                        VarioScreen(
+                            varioData = varioData,
+                            onStartFlight = { startFlight() },
+                            onPauseFlight = { pauseFlight() },
+                            onResumeFlight = { resumeFlight() },
+                            onStopFlight = { saveTrack -> stopFlight(saveTrack) },
+                            onSetFlightMode = { setFlightMode(it) },
+                            onSetActivityType = { setActivityType(it) },
+                            onProceedToFly = { proceedToFly() },
+                            onToggleMute = { toggleMute() },
+                            onReconnectUsb = { manualReconnectUsb() },
+                            onRequestUsbPermission = { requestUsbPermission() },
+                            onSetBaudRate = { setBaudRate(it) },
+                            onTestAudio = { testAudio(it) },
+                            onStopAudioTest = { stopAudioTest() },
+                            onOpenMap = { currentTab = CockpitTab.MAP },
+                            onOpenStats = { currentTab = CockpitTab.STATS }
+                        )
+                    }
+                    CockpitTab.MAP -> {
+                        MapScreen(
+                            varioData = varioData,
+                            onBackToVario = { currentTab = CockpitTab.VARIO }
+                        )
+                    }
+                    CockpitTab.STATS -> {
+                        ActivityStatsScreen(
+                            onBackToVario = { currentTab = CockpitTab.VARIO }
+                        )
+                    }
                 }
             }
         }
@@ -391,10 +402,12 @@ private fun VarioScreen(
     onSetBaudRate: (Int) -> Unit,
     onTestAudio: (Float) -> Unit,
     onStopAudioTest: () -> Unit,
-    onOpenMap: () -> Unit
+    onOpenMap: () -> Unit,
+    onOpenStats: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    var isPushMenuExpanded by remember { mutableStateOf(false) }
     var showDebugModal by remember { mutableStateOf(false) }
     var showHikeTransitionDialog by remember { mutableStateOf(false) }
     var showSaveConfirmDialog by remember { mutableStateOf(false) }
@@ -451,12 +464,28 @@ private fun VarioScreen(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 22.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            CollapsiblePushMenu(
+                isExpanded = isPushMenuExpanded,
+                onToggleExpand = { isPushMenuExpanded = !isPushMenuExpanded },
+                onOpenStats = onOpenStats,
+                onOpenMap = onOpenMap,
+                onOpenDebug = { showDebugModal = true },
+                onToggleMute = onToggleMute,
+                isMuted = varioData.isMuted
+            )
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 14.dp, vertical = 20.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
             // ── Top Header Bar ───────────────────────────────────────────
             HeaderBar(
                 gpsReady = varioData.gpsFixAcquired,
@@ -1218,6 +1247,8 @@ private fun VarioScreen(
                 }
             }
         }
+    }
+}
 
         // ── Hike & Fly Transition Dialog ─────────────────────────────────
         if (showHikeTransitionDialog) {

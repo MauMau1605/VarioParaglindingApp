@@ -53,8 +53,12 @@ data class TrackSummary(
     val startTimeMs: Long,
     val durationSec: Long,
     val maxAltitudeM: Float,
-    val totalDistanceM: Float,
-    val pointCount: Int
+    val totalDistanceM: Float = 0f,
+    val pointCount: Int = 0,
+    val activityType: ActivityType = ActivityType.SIMPLE_FLIGHT,
+    val theme: ActivityTheme = ActivityTheme.FLIGHT,
+    val airDurationSec: Long = 0L,
+    val airDistanceM: Float = 0f
 )
 
 /**
@@ -296,7 +300,14 @@ object GpxTrackManager {
         val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".gpx", ignoreCase = true) }
             ?: return emptyList()
 
-        return files.sortedByDescending { it.lastModified() }.mapNotNull { parseTrackSummary(it) }
+        return files.sortedByDescending { it.lastModified() }.mapNotNull { file ->
+            val summary = parseTrackSummary(file) ?: return@mapNotNull null
+            if (summary.activityType == ActivityType.SKI_TOURING || summary.theme == ActivityTheme.SKI) {
+                parseTrackWithAirMetrics(file) ?: summary
+            } else {
+                summary
+            }
+        }
     }
 
     /**
@@ -308,6 +319,9 @@ object GpxTrackManager {
             var maxAlt = 0f
             var firstTimeMs = file.lastModified()
             var lastTimeMs = file.lastModified()
+            var descText = ""
+            var keywordsText = ""
+            var nameText = ""
 
             file.inputStream().use { stream ->
                 val factory = XmlPullParserFactory.newInstance()
@@ -317,14 +331,22 @@ object GpxTrackManager {
                 var eventType = parser.eventType
                 var inEle = false
                 var inTime = false
+                var inDesc = false
+                var inKeywords = false
+                var inName = false
+                var inMetadata = false
 
                 while (eventType != XmlPullParser.END_DOCUMENT) {
                     when (eventType) {
                         XmlPullParser.START_TAG -> {
                             when (parser.name) {
+                                "metadata" -> inMetadata = true
                                 "trkpt" -> pointCount++
                                 "ele" -> inEle = true
                                 "time" -> inTime = true
+                                "desc" -> if (inMetadata) inDesc = true
+                                "keywords" -> inKeywords = true
+                                "name" -> if (inMetadata) inName = true
                             }
                         }
                         XmlPullParser.TEXT -> {
@@ -346,12 +368,22 @@ object GpxTrackManager {
                                         lastTimeMs = d.time
                                     }
                                 } catch (_: Exception) {}
+                            } else if (inDesc) {
+                                descText = text
+                            } else if (inKeywords) {
+                                keywordsText = text
+                            } else if (inName) {
+                                nameText = text
                             }
                         }
                         XmlPullParser.END_TAG -> {
                             when (parser.name) {
+                                "metadata" -> inMetadata = false
                                 "ele" -> inEle = false
                                 "time" -> inTime = false
+                                "desc" -> inDesc = false
+                                "keywords" -> inKeywords = false
+                                "name" -> inName = false
                             }
                         }
                     }
@@ -360,6 +392,35 @@ object GpxTrackManager {
             }
 
             val durationSec = ((lastTimeMs - firstTimeMs) / 1000L).coerceAtLeast(0L)
+
+            // Detect activity type and theme
+            val nameLower = file.name.lowercase(Locale.US)
+            val activityType = when {
+                nameLower.startsWith("skitouring") || nameLower.contains("ski") -> ActivityType.SKI_TOURING
+                nameLower.startsWith("hikefly") -> ActivityType.HIKE_AND_FLY
+                nameLower.startsWith("hike") -> ActivityType.HIKING
+                nameLower.startsWith("run") -> ActivityType.RUNNING
+                nameLower.startsWith("flight") -> ActivityType.SIMPLE_FLIGHT
+                keywordsText.contains("BackcountrySki", ignoreCase = true) || descText.contains("Ski", ignoreCase = true) || nameText.contains("Ski", ignoreCase = true) -> ActivityType.SKI_TOURING
+                keywordsText.contains("Hike", ignoreCase = true) && descText.contains("Hike & Fly", ignoreCase = true) -> ActivityType.HIKE_AND_FLY
+                keywordsText.contains("Run", ignoreCase = true) || descText.contains("Course", ignoreCase = true) -> ActivityType.RUNNING
+                keywordsText.contains("Hike", ignoreCase = true) || descText.contains("Randonnée", ignoreCase = true) -> ActivityType.HIKING
+                else -> ActivityType.SIMPLE_FLIGHT
+            }
+            val theme = ActivityTheme.fromActivityType(activityType)
+
+            // Parse total distance from desc
+            val distRegex = Regex("""Distance(?:\s+ajustée)?:\s*([0-9.]+)\s*m""", RegexOption.IGNORE_CASE)
+            val parsedDistance = distRegex.find(descText)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+
+            // Air metrics from metadata
+            var airDurationSec = 0L
+            var airDistanceM = 0f
+            val airDurRegex = Regex("""AirDuree:\s*([0-9]+)\s*s""", RegexOption.IGNORE_CASE)
+            val airDistRegex = Regex("""AirDistance:\s*([0-9.]+)\s*m""", RegexOption.IGNORE_CASE)
+            airDurRegex.find(descText)?.groupValues?.get(1)?.toLongOrNull()?.let { airDurationSec = it }
+            airDistRegex.find(descText)?.groupValues?.get(1)?.toFloatOrNull()?.let { airDistanceM = it }
+
             TrackSummary(
                 id = file.name,
                 fileName = file.name,
@@ -367,12 +428,46 @@ object GpxTrackManager {
                 startTimeMs = firstTimeMs,
                 durationSec = durationSec,
                 maxAltitudeM = maxAlt,
-                totalDistanceM = 0f,
-                pointCount = pointCount
+                totalDistanceM = parsedDistance,
+                pointCount = pointCount,
+                activityType = activityType,
+                theme = theme,
+                airDurationSec = airDurationSec,
+                airDistanceM = airDistanceM
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing track summary for ${file.name}", e)
             null
+        }
+    }
+
+    /**
+     * Parses a track with full flight/air metrics computed from the actual track points.
+     */
+    fun parseTrackWithAirMetrics(file: File): TrackSummary? {
+        val summary = parseTrackSummary(file) ?: return null
+        return try {
+            val points = loadTrackPoints(file)
+            if (points.isEmpty()) return summary
+            val (airSec, airDist) = ActivityStatsCalculator.calculateAirMetricsFromPoints(points)
+            var totalDist = summary.totalDistanceM
+            if (totalDist <= 0f && points.size >= 2) {
+                totalDist = 0f
+                for (i in 1 until points.size) {
+                    totalDist += VarioMath.distanceBetweenM(
+                        points[i - 1].latitude, points[i - 1].longitude,
+                        points[i].latitude, points[i].longitude
+                    )
+                }
+            }
+            summary.copy(
+                totalDistanceM = totalDist,
+                airDurationSec = airSec,
+                airDistanceM = airDist
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error calculating air metrics for ${file.name}", e)
+            summary
         }
     }
 
