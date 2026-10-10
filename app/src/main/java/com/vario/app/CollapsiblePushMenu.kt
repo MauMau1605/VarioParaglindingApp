@@ -122,10 +122,10 @@ fun CollapsiblePushMenu(
                         tint = Color(0xFF38BDF8)
                     )
 
-                    // 3. Diagnostics & Sensors Modal
+                    // 3. Logs & Diagnostics Modal
                     PushMenuItem(
-                        icon = "⚙️",
-                        label = "Diagnostics",
+                        icon = "📋",
+                        label = "Logs & Diagnostics",
                         isExpanded = isExpanded,
                         onClick = onOpenDebug,
                         tint = Color(0xFF94A3B8)
