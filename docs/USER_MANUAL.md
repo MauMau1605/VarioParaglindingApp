@@ -47,40 +47,50 @@ Android's aggressive Doze mode will terminate background audio if battery optimi
 The main interface is divided into two primary tabs: **VARIO** (Flight Instruments) and **MAP** (Tactical Navigation).
 
 ```
-+---+-------------------------------------------------------+
-| » | [GPS: Prêt]  [Baro+GPS]  [00:42:15]  [USB]  [🗺]  [🔊]|
-|   +-------------------------------------------------------+
-|📊 |                                                       |
-|   |         +2.4 m/s            [======|======]           |
-|🗺️ |      Vertical Speed          Analog Ladder            |
-|   |                                                       |
-|📋 |     1 845 m                       ~620 m              |
-|   |  Altitude (MSL)                  Sol (AGL)            |
-|🔊 |                                                       |
-|   |  +-----------------------+ +-----------------------+  |
-|   |  |    Plafond Atteint    | |    Distance au Déco   |  |
-|   |  |        2 150 m        | |         4.2 km        |  |
-|   |  +-----------------------+ +-----------------------+  |
-|   |                                                       |
-|   | [=============== DÉMARRER / ARRÊTER LE VOL ===============]
-+---+-------------------------------------------------------+
++-----------------------------------------------------------+
+| [GPS: Prêt]  [Baro+GPS]         [00:42:15]   [USB]    [🔊]|
++-----------------------------------------------------------+
+| [🪂 Vol Solo                                           ▼] |
++-----------------------------------------------------------+
+| +---+                                                     |
+| | » |         +2.4 m/s                                    |
+| | | |      Vertical Speed                                 |
+| |=| |       (m/s - En vol)                                |
+| | | |                                                     |
+| +---+                                                     |
+| (Ladder Gauge / Quick Actions)                            |
+|                                                           |
+|     1 845 m                               ~620 m          |
+|  Altitude (MSL)                          Sol (AGL)        |
+|                                                           |
+|  +-----------------------+     +-----------------------+  |
+|  |    Plafond Atteint    |     |    Distance au Déco   |  |
+|  |        2 150 m        |     |         4.2 km        |  |
+|  +-----------------------+     +-----------------------+  |
+|                                                           |
+| [============= DÉMARRER / ARRÊTER LE VOL ===============] |
+| [==================== 🗺 CARTE =========================] |
++-----------------------------------------------------------+
 ```
 
-### Collapsible Push Menu (Barre Latérale)
-The cockpit features a high-visibility collapsible sidebar menu docked along the left border:
-- **Expand / Collapse (`»` / `«`):** Smoothly transitions between compact icon mode (~54 dp) and expanded text mode (~220 dp).
-- **Statistiques d'activités (`📊`):** Full multi-sport activity summaries, elevation statistics, and saved track browser.
-- **Carte tactique (`🗺️`):** Tactical map screen with moving glider, thermal markers, and terrain clearance overlays.
-- **Logs & Diagnostics (`📋`):** Engineering diagnostic center, LK8EX1 raw NMEA stream, live console logs, and sensor diagnostics.
-- **Audio Vario (`🔇` / `🔊`):** Instant acoustic mute/unmute toggle with dynamic ON/OFF badge.
+### Central Vertical Band (Bandeau Vertical Intégré)
+The central instrument area integrates quick tools directly into its vertical band on the left of the digits, without requiring a dedicated full-height sidebar consuming screen width:
+- **Expand / Collapse (`»` / `«`):** Smoothly transitions between compact mode (~44 dp) and expanded menu mode (~210 dp).
+- **In Flight ($V_z$ View):** Displays the climb/sink ladder gauge along the vertical rail with a compact expand toggle at top.
+- **In Stats & Hike Modes:** Directly displays quick action buttons:
+  - **Statistiques d'activités (`📊`):** Full multi-sport activity summaries, elevation statistics, and saved track browser.
+  - **Logs & Diagnostics (`📋`):** Engineering diagnostic center, LK8EX1 raw NMEA stream, live console logs, and sensor diagnostics.
+- **Expanded Menu:** Exposes full descriptive titles for instant navigation, then collapses back to maximize cockpit readability.
 
 ### Top Status Header
 - **GPS Status Indicator:** Indicates GNSS satellite fix quality (`GPS prêt` in green, `Attente` in grey).
 - **Sensor Mode Badge:** Displays active sensor fusion status (`Baro + GPS`, `Scan USB…`, or `GPS seul`).
 - **Flight Timer:** Elapsed flight or session duration formatted in `HH:MM:SS`.
 - **USB Reconnect Button:** Quick probe button to detect or reconnect the USB-OTG sensor dongle.
-- **Tactical Map Shortcut (`🗺`):** Direct shortcut to switch to the full-screen tactical map.
-- **Mute Toggle Button:** Quick audio variometer mute/unmute toggle.
+- **Mute Toggle Button:** Quick audio variometer mute/unmute toggle (`🔊` / `🔇`).
+
+### Tactical Navigation & Flight Controls
+- **Tactical Map Switch (`🗺 Carte`):** Prominent button positioned at the bottom of the cockpit alongside the flight start/stop trigger for direct full-screen map access.
 
 ### Instrument Cards
 - **Digital Vertical Speed ($V_z$):** Large, high-contrast readout in meters per second (m/s). Positive values indicate lift; negative values indicate sink.

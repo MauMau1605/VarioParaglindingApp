@@ -304,8 +304,9 @@ stateDiagram-v2
 ## 9. Jetpack Compose Cockpit & Diagnostic Modal
 
 - **`MainActivity.kt`:** Renders the primary flight cockpit using Jetpack Compose with two main views:
-  - **VARIO Screen:** Large high-contrast digital Vz, analog climb/sink ladder gauge, adaptive altitude readout (dual absolute QNH/MSL altitude and real-time cyan estimated ground clearance AGL in flight mode; clean single MSL altitude readout in ground/hike modes), ceiling attained, distance to takeoff, flight timer, and mute toggle.
+  - **VARIO Screen:** Large high-contrast digital Vz, integrated central vertical band (`CockpitVerticalBar`) unifying the analog climb/sink ladder gauge with quick-action tools (Activity Statistics, Diagnostic Logs), adaptive altitude readout (dual absolute QNH/MSL altitude and real-time cyan estimated ground clearance AGL in flight mode; clean single MSL altitude readout in ground/hike modes), ceiling attained, distance to takeoff, flight timer, and deduplicated controls.
   - **MAP Screen:** Full-screen vector/raster map with pilot heading arrow, thermal breadcrumbs, glide cone reach, and itinerary planning tools.
+- **`CollapsiblePushMenu.kt` (`CockpitVerticalBar`):** Reusable vertical band component anchored on the left of the central cockpit instruments. In flight mode, displays the real-time ladder gauge with an expand trigger; in ground and stats modes, displays direct quick-action buttons for activity stats and diagnostic logs, smoothly expanding to 210 dp without requiring a dedicated full-height sidebar.
 - **`DebugModal.kt` & `DebugLogger.kt`:** Built-in engineering diagnostic terminal:
   - Raw LK8EX1 sentence live terminal with ASCII inspection.
   - Frame counter (valid frames vs checksum error count).
