@@ -83,12 +83,12 @@ import kotlinx.coroutines.launch
  * Main activity of VarioAppli.
  *
  * Cockpit UI with real-time flight instrument displays and debug modal:
- * - Top header: GPS state, sensor mode badge, USB reconnect button, flight timer, map button, and audio mute toggle.
- * - Collapsible sidebar menu: Activity statistics, tactical map, logs and diagnostic terminal, and audio mute toggle.
- * - Variometer section: Vertical ladder gauge alongside big Vz digits and flight status.
+ * - Top header: GPS state, sensor mode badge, flight timer, USB reconnect button, and audio mute toggle.
+ * - Central vertical band: Real-time variometer ladder gauge, activity statistics, and diagnostic logs shortcut.
+ * - Variometer section: Central vertical instrument alongside big Vz digits and flight status.
  * - Altitude section: Large barometric altitude readout with standard units.
  * - Info cards: Ceiling altitude reached ("Plafond atteint") and distance to takeoff ("Distance au déco").
- * - Action button: Full-width flight start/stop trigger.
+ * - Action button: Full-width flight start/stop trigger with map mode switch.
  * - Debug Modal: Complete diagnostic center for GPS, USB/LK8EX1, Audio synthesis, Console logs, and Battery optimization.
  */
 /**
@@ -408,7 +408,7 @@ private fun VarioScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var isPushMenuExpanded by remember { mutableStateOf(false) }
+    var isVerticalBarExpanded by remember { mutableStateOf(false) }
     var showDebugModal by remember { mutableStateOf(false) }
     var showHikeTransitionDialog by remember { mutableStateOf(false) }
     var showSaveConfirmDialog by remember { mutableStateOf(false) }
@@ -465,28 +465,12 @@ private fun VarioScreen(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Row(modifier = Modifier.fillMaxSize()) {
-            CollapsiblePushMenu(
-                isExpanded = isPushMenuExpanded,
-                onToggleExpand = { isPushMenuExpanded = !isPushMenuExpanded },
-                onOpenStats = onOpenStats,
-                onOpenMap = onOpenMap,
-                onOpenDebug = { showDebugModal = true },
-                onToggleMute = onToggleMute,
-                isMuted = varioData.isMuted
-            )
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 14.dp, vertical = 20.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
             // ── Top Header Bar ───────────────────────────────────────────
             HeaderBar(
                 gpsReady = varioData.gpsFixAcquired,
@@ -496,8 +480,7 @@ private fun VarioScreen(
                 flightDurationSec = varioData.flightDurationSec,
                 isMuted = varioData.isMuted,
                 onReconnectUsb = onReconnectUsb,
-                onToggleMute = onToggleMute,
-                onOpenMap = onOpenMap
+                onToggleMute = onToggleMute
             )
 
             // ── Activity Type Selector or Active Session Banner ─────────
@@ -627,28 +610,14 @@ private fun VarioScreen(
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Mountain Climb Badge / Indicator on left
-                        Box(
-                            modifier = Modifier
-                                .width(40.dp)
-                                .height(170.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF131926))
-                                .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.padding(vertical = 12.dp)
-                            ) {
-                                Text(text = "▲", fontSize = 16.sp, color = Color(0xFF4ADE80))
-                                Text(text = "D", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF38BDF8))
-                                Text(text = "±", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFBBF24))
-                                Text(text = "▼", fontSize = 16.sp, color = Color(0xFFF87171))
-                                Text(text = varioData.activityType.emoji, fontSize = 16.sp)
-                            }
-                        }
+                        CockpitVerticalBar(
+                            isExpanded = isVerticalBarExpanded,
+                            onToggleExpand = { isVerticalBarExpanded = !isVerticalBarExpanded },
+                            onOpenStats = onOpenStats,
+                            onOpenDebug = { showDebugModal = true },
+                            isFlightVzView = false,
+                            badgeText = varioData.activityType.emoji
+                        )
 
                         // Dual D+ / D- Elevation Display
                         Column(
@@ -713,35 +682,50 @@ private fun VarioScreen(
                         }
                     }
                 } else {
-                    // Fly Mode: Clickable area cycling through 3 views
-                    Box(
+                    // Fly Mode: Cockpit vertical bar on left + Clickable metrics cycling through 3 views on right
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                flyMetricViewIndex = (flyMetricViewIndex + 1) % 3
-                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        when (flyMetricViewIndex) {
-                            0 -> {
-                                // View 0: Normal Flight Vz Mode
-                                Row(
+                        CockpitVerticalBar(
+                            isExpanded = isVerticalBarExpanded,
+                            onToggleExpand = { isVerticalBarExpanded = !isVerticalBarExpanded },
+                            onOpenStats = onOpenStats,
+                            onOpenDebug = { showDebugModal = true },
+                            isFlightVzView = (flyMetricViewIndex == 0),
+                            gaugeContent = {
+                                VarioLadderGauge(
+                                    vz = varioData.vzMs,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Vertical Ladder Gauge
-                                    VarioLadderGauge(
-                                        vz = varioData.vzMs,
-                                        modifier = Modifier
-                                            .width(36.dp)
-                                            .height(170.dp)
-                                    )
+                                        .fillMaxHeight()
+                                )
+                            },
+                            badgeText = when (flyMetricViewIndex) {
+                                1 -> "±⏱️"
+                                2 -> "🪂"
+                                else -> null
+                            }
+                        )
 
-                                    // Large Vz Display & Status
+                        // Clickable area cycling through 3 views
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    flyMetricViewIndex = (flyMetricViewIndex + 1) % 3
+                                }
+                        ) {
+                            when (flyMetricViewIndex) {
+                                0 -> {
+                                    // View 0: Normal Flight Vz Mode
                                     Column(
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 8.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         Text(
@@ -782,40 +766,11 @@ private fun VarioScreen(
                                         )
                                     }
                                 }
-                            }
-                            1 -> {
-                                // View 1: Total elevation changes (+ and -) since the very beginning
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(36.dp)
-                                            .height(170.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFF131926))
-                                            .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.SpaceBetween,
-                                            modifier = Modifier.padding(vertical = 12.dp)
-                                        ) {
-                                            Text(text = "▲", fontSize = 15.sp, color = Color(0xFF4ADE80))
-                                            Text(text = "D", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF38BDF8))
-                                            Text(text = "±", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFBBF24))
-                                            Text(text = "▼", fontSize = 15.sp, color = Color(0xFFF87171))
-                                            Text(text = "⏱️", fontSize = 15.sp)
-                                        }
-                                    }
-
+                                1 -> {
+                                    // View 1: Total elevation changes (+ and -) since the very beginning
                                     Column(
                                         modifier = Modifier
-                                            .weight(1f)
+                                            .fillMaxWidth()
                                             .padding(start = 12.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
@@ -880,40 +835,11 @@ private fun VarioScreen(
                                         )
                                     }
                                 }
-                            }
-                            2 -> {
-                                // View 2: Stats since flight takeoff (flight D+, flight D-, and maximum recorded climb rate)
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(36.dp)
-                                            .height(170.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFF131926))
-                                            .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.SpaceBetween,
-                                            modifier = Modifier.padding(vertical = 12.dp)
-                                        ) {
-                                            Text(text = "🪂", fontSize = 15.sp)
-                                            Text(text = "D", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF38BDF8))
-                                            Text(text = "±", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFBBF24))
-                                            Text(text = "Vz", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4ADE80))
-                                            Text(text = "▲", fontSize = 15.sp, color = Color(0xFF4ADE80))
-                                        }
-                                    }
-
+                                2 -> {
+                                    // View 2: Stats since flight takeoff (flight D+, flight D-, and maximum recorded climb rate)
                                     Column(
                                         modifier = Modifier
-                                            .weight(1f)
+                                            .fillMaxWidth()
                                             .padding(start = 8.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
@@ -1247,8 +1173,6 @@ private fun VarioScreen(
                 }
             }
         }
-    }
-}
 
         // ── Hike & Fly Transition Dialog ─────────────────────────────────
         if (showHikeTransitionDialog) {
@@ -1633,8 +1557,7 @@ private fun HeaderBar(
     flightDurationSec: Long,
     isMuted: Boolean,
     onReconnectUsb: () -> Unit,
-    onToggleMute: () -> Unit,
-    onOpenMap: () -> Unit
+    onToggleMute: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1663,7 +1586,7 @@ private fun HeaderBar(
             SensorModeBadge(mode = sensorMode, isScanning = isUsbScanning)
         }
 
-        // Right: Flight timer, USB Reconnect button, Map button, and Audio mute button
+        // Right: Flight timer, USB Reconnect button, and Audio mute button
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1680,17 +1603,6 @@ private fun HeaderBar(
                 isScanning = isUsbScanning,
                 onReconnect = onReconnectUsb
             )
-
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .background(Color(0xFF131926), shape = RoundedCornerShape(10.dp))
-                    .border(1.dp, Color(0xFF0284C7), shape = RoundedCornerShape(10.dp))
-                    .clickable { onOpenMap() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "🗺", fontSize = 17.sp)
-            }
 
             Box(
                 modifier = Modifier
