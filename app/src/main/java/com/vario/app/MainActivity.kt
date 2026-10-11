@@ -83,7 +83,8 @@ import kotlinx.coroutines.launch
  * Main activity of VarioAppli.
  *
  * Cockpit UI with real-time flight instrument displays and debug modal:
- * - Top header: GPS state, sensor mode badge, USB reconnect button, debug terminal button, flight timer, and audio mute toggle.
+ * - Top header: GPS state, sensor mode badge, USB reconnect button, flight timer, map button, and audio mute toggle.
+ * - Collapsible sidebar menu: Activity statistics, tactical map, logs and diagnostic terminal, and audio mute toggle.
  * - Variometer section: Vertical ladder gauge alongside big Vz digits and flight status.
  * - Altitude section: Large barometric altitude readout with standard units.
  * - Info cards: Ceiling altitude reached ("Plafond atteint") and distance to takeoff ("Distance au déco").
@@ -496,7 +497,6 @@ private fun VarioScreen(
                 isMuted = varioData.isMuted,
                 onReconnectUsb = onReconnectUsb,
                 onToggleMute = onToggleMute,
-                onOpenDebug = { showDebugModal = true },
                 onOpenMap = onOpenMap
             )
 
@@ -1634,7 +1634,6 @@ private fun HeaderBar(
     isMuted: Boolean,
     onReconnectUsb: () -> Unit,
     onToggleMute: () -> Unit,
-    onOpenDebug: () -> Unit,
     onOpenMap: () -> Unit
 ) {
     Row(
@@ -1664,7 +1663,7 @@ private fun HeaderBar(
             SensorModeBadge(mode = sensorMode, isScanning = isUsbScanning)
         }
 
-        // Right: Flight timer, USB Reconnect button, Debug button, and Audio mute button
+        // Right: Flight timer, USB Reconnect button, Map button, and Audio mute button
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1680,10 +1679,6 @@ private fun HeaderBar(
                 isConnected = isUsbConnected,
                 isScanning = isUsbScanning,
                 onReconnect = onReconnectUsb
-            )
-
-            DebugStatusButton(
-                onOpenDebug = onOpenDebug
             )
 
             Box(
@@ -1786,67 +1781,6 @@ private fun UsbStatusButton(
         UsbIcon(
             modifier = Modifier.size(20.dp),
             tint = iconTint
-        )
-    }
-}
-
-@Composable
-private fun DebugStatusButton(
-    onOpenDebug: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .size(38.dp)
-            .background(Color(0xFF131926), shape = RoundedCornerShape(10.dp))
-            .border(1.dp, Color(0xFF1E2A3A), shape = RoundedCornerShape(10.dp))
-            .clickable { onOpenDebug() },
-        contentAlignment = Alignment.Center
-    ) {
-        TerminalIcon(
-            modifier = Modifier.size(20.dp),
-            tint = Color(0xFF94A3B8)
-        )
-    }
-}
-
-@Composable
-private fun TerminalIcon(
-    modifier: Modifier = Modifier,
-    tint: Color = Color(0xFF94A3B8)
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-
-        // Outer terminal window
-        drawRoundRect(
-            color = tint,
-            topLeft = Offset(w * 0.12f, h * 0.18f),
-            size = Size(w * 0.76f, h * 0.64f),
-            cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx()),
-            style = Stroke(width = 1.6.dp.toPx())
-        )
-
-        // Chevron `>`
-        val prompt = Path().apply {
-            moveTo(w * 0.28f, h * 0.38f)
-            lineTo(w * 0.44f, h * 0.50f)
-            lineTo(w * 0.28f, h * 0.62f)
-        }
-        drawPath(
-            path = prompt,
-            color = tint,
-            style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-
-        // Underscore cursor `_`
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.50f, h * 0.62f),
-            end = Offset(w * 0.68f, h * 0.62f),
-            strokeWidth = 1.6.dp.toPx(),
-            cap = StrokeCap.Round
         )
     }
 }
