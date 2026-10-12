@@ -397,6 +397,16 @@ When a GPX flight track is loaded or reviewed on the map, `GpxTrackManager.compu
 - **`TrackProfilePoint` list:** Cumulative ground distance ($d_i = d_{i-1} + \text{haversine}(p_{i-1}, p_i)$), altitude, vertical speed, ground speed, and timestamp.
 - **`TrackProfileData` summary:** Total distance, duration, elevation extremes ($Alt_{min}, Alt_{max}$), cumulative climb ($D^+$) and descent ($D^-$), maximum and average speeds, and vertical speed extremes ($V_{z,\max}, V_{z,\min}$).
 
+### Track Selection & Native Storage Access Framework Integration (`MapScreen.kt`)
+1. **Modal BottomSheet & Native File Picker:**
+   - Tap `📁` on `MapTopHudBar` to open `TrackHistoryBottomSheet`.
+   - **Clickable Track Cards:** Pilots can select saved tracks by tapping directly anywhere on the card or clicking "Afficher".
+   - **Active Track Highlighting:** Displays a visual border and `✓ Affichée` badge for the loaded track with a "Masquer" toggle button to clear it.
+   - **Android Native File Picker:** Integrates `ActivityResultContracts.OpenDocument` (`*/*`) to import external GPX files from internal storage, SD card, Downloads, or cloud providers via `GpxTrackManager.importTrackFromUri`.
+2. **Auto-Centering & Pilot Lock Decoupling:**
+   - As soon as a track is selected, the map centers (`setCenter` / `animateTo`) and zooms to level 15 on the track's departure coordinate.
+   - Pilot lock (`isFollowingPilot`) is automatically decoupled to allow free pan/zoom inspection.
+
 ### Interactive Profile Scrubber & Map Synchronization (`MapScreen.kt`)
 1. **Touch Gesture Tracking:** The elevation graph uses Compose `pointerInput` with `detectDragGestures` and `detectTapGestures` to capture touch coordinates $X_{touch} \in [0, W_{graph}]$.
 2. **Distance-to-Point Mapping:** The touch ratio $X / W$ maps linearly to cumulative distance $d_{scrub} = \text{ratio} \times d_{total}$. The nearest `TrackProfilePoint` is resolved in $O(\log N)$ or fast linear scan.

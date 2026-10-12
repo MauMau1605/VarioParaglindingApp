@@ -275,6 +275,42 @@ class GpxTrackManagerTest {
         assertThat(content).contains("</gpx>")
     }
 
+    @Test
+    fun `importTrackFromStream should save file and be loadable by track manager`() {
+        val gpxContent = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <gpx version="1.1" creator="ExternalApp" xmlns="http://www.topografix.com/GPX/1/1">
+              <metadata><name>Imported flight</name></metadata>
+              <trk>
+                <name>Flight</name>
+                <trkseg>
+                  <trkpt lat="45.1885" lon="5.7245"><ele>1200.0</ele><time>2026-10-12T10:00:00Z</time></trkpt>
+                  <trkpt lat="45.1900" lon="5.7300"><ele>1350.0</ele><time>2026-10-12T10:05:00Z</time></trkpt>
+                </trkseg>
+              </trk>
+            </gpx>
+        """.trimIndent()
+
+        val inputStream = gpxContent.byteInputStream()
+        val importedFile = GpxTrackManager.importTrackFromStream(context, inputStream, "flight_external.gpx")
+
+        assertThat(importedFile).isNotNull()
+        assertThat(importedFile?.exists()).isTrue()
+        assertThat(importedFile?.name).contains("flight_external")
+
+        val points = GpxTrackManager.loadTrackPoints(importedFile!!)
+        assertThat(points).hasSize(2)
+        assertThat(points[0].latitude).isEqualTo(45.1885)
+        assertThat(points[1].altitudeM).isEqualTo(1350.0f)
+    }
+
+    @Test
+    fun `importTrackFromStream should return null for empty stream`() {
+        val emptyStream = "".byteInputStream()
+        val importedFile = GpxTrackManager.importTrackFromStream(context, emptyStream, "empty.gpx")
+        assertThat(importedFile).isNull()
+    }
+
     // Helper methods to create test GPX files
 
     private fun createTestGpxFile(
