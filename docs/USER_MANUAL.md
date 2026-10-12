@@ -48,17 +48,15 @@ The main interface is divided into two primary tabs: **VARIO** (Flight Instrumen
 
 ```
 +-----------------------------------------------------------+
-| [GPS: Prêt]  [Baro+GPS]         [00:42:15]   [USB]    [🔊]|
+| [GPS: Prêt]  [Baro+GPS]         [00:42:15]       [≡ Menu] |
 +-----------------------------------------------------------+
 | [🪂 Vol Solo                                           ▼] |
 +-----------------------------------------------------------+
-| +---+                                                     |
-| | » |         +2.4 m/s                                    |
-| | | |      Vertical Speed                                 |
-| |=| |       (m/s - En vol)                                |
-| | | |                                                     |
-| +---+                                                     |
-| (Ladder Gauge / Quick Actions)                            |
+|                                                           |
+|                        +2.4 m/s                           |
+|                     Vertical Speed                        |
+|                      (m/s - En vol)                       |
+|                   ● ○ ○ (Toucher: stats)                  |
 |                                                           |
 |     1 845 m                               ~620 m          |
 |  Altitude (MSL)                          Sol (AGL)        |
@@ -73,21 +71,20 @@ The main interface is divided into two primary tabs: **VARIO** (Flight Instrumen
 +-----------------------------------------------------------+
 ```
 
-### Central Vertical Band (Bandeau Vertical Intégré)
-The central instrument area integrates quick tools directly into its vertical band on the left of the digits, without requiring a dedicated full-height sidebar consuming screen width:
-- **Expand / Collapse (`»` / `«`):** Smoothly transitions between compact mode (~44 dp) and expanded menu mode (~210 dp).
-- **In Flight ($V_z$ View):** Displays the climb/sink ladder gauge along the vertical rail with a compact expand toggle at top.
-- **In Stats & Hike Modes:** Directly displays quick action buttons:
-  - **Statistiques d'activités (`📊`):** Full multi-sport activity summaries, elevation statistics, and saved track browser.
-  - **Logs & Diagnostics (`📋`):** Engineering diagnostic center, LK8EX1 raw NMEA stream, live console logs, and sensor diagnostics.
-- **Expanded Menu:** Exposes full descriptive titles for instant navigation, then collapses back to maximize cockpit readability.
-
-### Top Status Header
+### Top Status Header & Dropdown Menu (`HeaderMenuPanel`)
+The top header consolidates status information and quick tool access into a unified control strip:
 - **GPS Status Indicator:** Indicates GNSS satellite fix quality (`GPS prêt` in green, `Attente` in grey).
 - **Sensor Mode Badge:** Displays active sensor fusion status (`Baro + GPS`, `Scan USB…`, or `GPS seul`).
 - **Flight Timer:** Elapsed flight or session duration formatted in `HH:MM:SS`.
-- **USB Reconnect Button:** Quick probe button to detect or reconnect the USB-OTG sensor dongle.
-- **Mute Toggle Button:** Quick audio variometer mute/unmute toggle (`🔊` / `🔇`).
+- **Menu Toggle Button (`≡` / `▲`):** Replaces standalone buttons with a single menu trigger. Tapping it smoothly slides down a dedicated dropdown control panel directly below the header.
+- **Scrollable Dropdown Panel (`HeaderMenuPanel`):**
+  - Features smooth animated deployment (0 to 180 dp).
+  - Equipped with **vertical scrolling (`verticalScroll`)** ensuring all action tiles remain accessible regardless of screen size or item count:
+    - **📊 Statistiques :** Accès direct à l'historique multi-sports, synthèses kilométriques et gestion des traces GPX.
+    - **📋 Logs & Diag :** Terminal de diagnostic LK8EX1, flux NMEA brut, console système et tests audio.
+    - **🔌 Reconnecter USB :** Bouton d'action et indicateur visuel de connexion du module capteur (état vert si connecté).
+    - **🔇 / 🔊 Son Vario :** Bascule instantanée du silencieux acoustique avec retour d'état en direct.
+- **Full-Width Central Cockpit:** Removing the middle-screen sidebar allows the central flight instruments (digital $V_z$ or mountain $D^+/D^-$ meters) to expand across the full screen width for optimal glanceability in high sunlight.
 
 ### Tactical Navigation & Flight Controls
 - **Tactical Map Switch (`🗺 Carte`):** Prominent button positioned at the bottom of the cockpit alongside the flight start/stop trigger for direct full-screen map access.
@@ -266,6 +263,17 @@ Once airborne in flight mode, you can tap anywhere on the central vertical speed
      - **$D^-_{\text{vol}}$:** Cumulative glide descent in flight.
      - **$V_{z,\max}$:** Peak thermal climb rate recorded during the flight.
 4. Tapping again loops back to Page 1.
+
+### 5. Decoupled Hike & Fly Activity Statistics (Découplage Rando & Vol)
+Dans la fenêtre des **Statistiques d'activités (`📊`)**, les sessions mixtes **Hike & Fly** sont automatiquement découplées afin d'éviter tout double comptage entre marche et vol :
+- **Principe de découplage :** Une sortie de 4 heures comprenant 3 heures d'ascension à pied et 1 heure de vol plané ne compte plus pour 4 h de rando et 4 h de vol.
+  - La partie **Randonnée** compte exclusivement dans l'onglet **Randonnée 🥾** (durée de montée, distance à pied, dénivelé positif $D^+$).
+  - La partie **Vol** compte exclusivement dans l'onglet **Vol 🪂** (temps passé en l'air, distance de vol/glisse, plafond atteint).
+  - L'onglet **Tous 🌐** conserve la durée et distance totales cumulées de l'aventure complète.
+- **Détection par métadonnées GPX :** VarioAppli s'appuie sur le champ de balisage `<phase>` (`HIKING` vs `FLYING`) enregistré sur chaque point GPS. Pour les traces plus anciennes ou importées sans balises, une heuristique basée sur la vitesse sol ($v \ge 20\text{ km/h}$) et le taux de chute/montée isole automatiquement la descente en vol.
+- **Badges visuels détaillés :** Sur chaque carte de trace Hike & Fly, des badges distincts indiquent la répartition exacte :
+  - `🥾 [Durée] • [Distance]` pour la portion terrestre.
+  - `🪂 [Durée] • [Distance]` pour la portion aérienne.
 
 ---
 

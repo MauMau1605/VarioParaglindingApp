@@ -479,8 +479,22 @@ private fun VarioScreen(
                 isUsbScanning = varioData.isUsbScanning,
                 flightDurationSec = varioData.flightDurationSec,
                 isMuted = varioData.isMuted,
+                isMenuExpanded = isVerticalBarExpanded,
+                onToggleMenu = { isVerticalBarExpanded = !isVerticalBarExpanded },
                 onReconnectUsb = onReconnectUsb,
                 onToggleMute = onToggleMute
+            )
+
+            // ── Expandable Menu Panel ─────────────────────────
+            HeaderMenuPanel(
+                isExpanded = isVerticalBarExpanded,
+                onToggleExpand = { isVerticalBarExpanded = !isVerticalBarExpanded },
+                onOpenStats = onOpenStats,
+                onOpenDebug = { showDebugModal = true },
+                onReconnectUsb = onReconnectUsb,
+                onToggleMute = onToggleMute,
+                isMuted = varioData.isMuted,
+                isUsbConnected = varioData.isUsbConnected
             )
 
             // ── Activity Type Selector or Active Session Banner ─────────
@@ -604,130 +618,84 @@ private fun VarioScreen(
             Column {
                 if (isHikeVisualLayout) {
                     // Hike / Mountain Mode: Elevation Gain (D+) and Loss (D-) readout instead of Vz!
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        CockpitVerticalBar(
-                            isExpanded = isVerticalBarExpanded,
-                            onToggleExpand = { isVerticalBarExpanded = !isVerticalBarExpanded },
-                            onOpenStats = onOpenStats,
-                            onOpenDebug = { showDebugModal = true },
-                            isFlightVzView = false,
-                            badgeText = varioData.activityType.emoji
-                        )
-
-                        // Dual D+ / D- Elevation Display
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(
-                                        text = "+${varioData.elevationGainM.toInt()} m",
-                                        fontSize = 36.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF4ADE80),
-                                        lineHeight = 40.sp
-                                    )
-                                    Text(
-                                        text = "D+ (gain)",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF94A3B8)
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .width(1.dp)
-                                        .height(60.dp)
-                                        .background(Color(0xFF1E293B))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "+${varioData.elevationGainM.toInt()} m",
+                                    fontSize = 36.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF4ADE80),
+                                    lineHeight = 40.sp
                                 )
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(
-                                        text = "-${varioData.elevationLossM.toInt()} m",
-                                        fontSize = 36.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFFF87171),
-                                        lineHeight = 40.sp
-                                    )
-                                    Text(
-                                        text = "D- (perte)",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF94A3B8)
-                                    )
-                                }
+                                Text(
+                                    text = "D+ (gain)",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF94A3B8)
+                                )
                             }
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Text(
-                                text = when {
-                                    !varioData.isFlightActive -> "Prêt au départ (${varioData.activityType.label})"
-                                    varioData.isFlightPaused -> "${varioData.activityType.label} en pause ⏸️"
-                                    else -> "${varioData.activityType.emoji} ${varioData.activityType.label} en cours"
-                                },
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = if (varioData.isFlightPaused) Color(0xFFF59E0B) else Color(0xFF38BDF8)
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .height(60.dp)
+                                    .background(Color(0xFF1E293B))
                             )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "-${varioData.elevationLossM.toInt()} m",
+                                    fontSize = 36.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFF87171),
+                                    lineHeight = 40.sp
+                                )
+                                Text(
+                                    text = "D- (perte)",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF94A3B8)
+                                )
+                            }
                         }
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = when {
+                                !varioData.isFlightActive -> "Prêt au départ (${varioData.activityType.label})"
+                                varioData.isFlightPaused -> "${varioData.activityType.label} en pause ⏸️"
+                                else -> "${varioData.activityType.emoji} ${varioData.activityType.label} en cours"
+                            },
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (varioData.isFlightPaused) Color(0xFFF59E0B) else Color(0xFF38BDF8)
+                        )
                     }
                 } else {
-                    // Fly Mode: Cockpit vertical bar on left + Clickable metrics cycling through 3 views on right
-                    Row(
+                    // Fly Mode: Clickable metrics cycling through 3 views
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CockpitVerticalBar(
-                            isExpanded = isVerticalBarExpanded,
-                            onToggleExpand = { isVerticalBarExpanded = !isVerticalBarExpanded },
-                            onOpenStats = onOpenStats,
-                            onOpenDebug = { showDebugModal = true },
-                            isFlightVzView = (flyMetricViewIndex == 0),
-                            gaugeContent = {
-                                VarioLadderGauge(
-                                    vz = varioData.vzMs,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .fillMaxHeight()
-                                )
-                            },
-                            badgeText = when (flyMetricViewIndex) {
-                                1 -> "±⏱️"
-                                2 -> "🪂"
-                                else -> null
+                            .padding(vertical = 12.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                flyMetricViewIndex = (flyMetricViewIndex + 1) % 3
                             }
-                        )
-
-                        // Clickable area cycling through 3 views
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    flyMetricViewIndex = (flyMetricViewIndex + 1) % 3
-                                }
-                        ) {
-                            when (flyMetricViewIndex) {
-                                0 -> {
-                                    // View 0: Normal Flight Vz Mode
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(start = 8.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
+                    ) {
+                        when (flyMetricViewIndex) {
+                            0 -> {
+                                // View 0: Normal Flight Vz Mode
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
                                         Text(
                                             text = formatVz(varioData.vzMs),
                                             fontSize = 82.sp,
@@ -921,7 +889,6 @@ private fun VarioScreen(
                                 }
                             }
                         }
-                    }
                 }
 
                 // Subtle separator divider
@@ -1556,6 +1523,8 @@ private fun HeaderBar(
     isUsbScanning: Boolean,
     flightDurationSec: Long,
     isMuted: Boolean,
+    isMenuExpanded: Boolean,
+    onToggleMenu: () -> Unit,
     onReconnectUsb: () -> Unit,
     onToggleMute: () -> Unit
 ) {
@@ -1586,7 +1555,7 @@ private fun HeaderBar(
             SensorModeBadge(mode = sensorMode, isScanning = isUsbScanning)
         }
 
-        // Right: Flight timer, USB Reconnect button, and Audio mute button
+        // Right: Flight timer and Menu toggle button
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1598,24 +1567,22 @@ private fun HeaderBar(
                 color = if (flightDurationSec > 0) Color(0xFFCBD5E1) else Color(0xFF8B9CB0)
             )
 
-            UsbStatusButton(
-                isConnected = isUsbConnected,
-                isScanning = isUsbScanning,
-                onReconnect = onReconnectUsb
-            )
-
             Box(
                 modifier = Modifier
                     .size(38.dp)
-                    .background(Color(0xFF131926), shape = RoundedCornerShape(10.dp))
-                    .border(1.dp, Color(0xFF1E2A3A), shape = RoundedCornerShape(10.dp))
-                    .clickable { onToggleMute() },
+                    .background(
+                        if (isMenuExpanded) Color(0xFF0284C7) else Color(0xFF131926),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .border(1.dp, if (isMenuExpanded) Color(0xFF38BDF8) else Color(0xFF1E2A3A), shape = RoundedCornerShape(10.dp))
+                    .clickable { onToggleMenu() },
                 contentAlignment = Alignment.Center
             ) {
-                SpeakerIcon(
-                    isMuted = isMuted,
-                    modifier = Modifier.size(20.dp),
-                    tint = if (isMuted) Color(0xFFEF4444) else Color(0xFF94A3B8)
+                Text(
+                    text = if (isMenuExpanded) "▲" else "≡",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isMenuExpanded) Color.White else Color(0xFF94A3B8)
                 )
             }
         }

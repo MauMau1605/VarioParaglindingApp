@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [switch]$Build = $false,
     [switch]$Launch = $true,
@@ -51,12 +51,23 @@ Write-Host "Appareil dÃ©tectÃ© avec succÃ¨s." -ForegroundColor Green
 
 # 3. Compilation optionnelle
 if ($Build) {
+    # Vérification / Configuration de JAVA_HOME si non défini ou pointant vers un JRE incompatible
+    if (-not $env:JAVA_HOME -or -not (Test-Path $env:JAVA_HOME)) {
+        $candidateJdk = Join-Path $HOME ".jdks\jdk-17.0.11+9"
+        if (-not (Test-Path $candidateJdk)) {
+            $candidateJdk = Get-ChildItem (Join-Path $HOME ".jdks") -Directory -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+        }
+        if ($candidateJdk -and (Test-Path $candidateJdk)) {
+            $env:JAVA_HOME = $candidateJdk
+        }
+    }
+
     Write-Host "`nCompilation de l'APK (assembleDebug)..." -ForegroundColor Cyan
     Push-Location $projectRoot
     try {
         & .\gradlew.bat assembleDebug
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "La compilation Gradle a Ã©chouÃ© avec le code $LASTEXITCODE."
+            Write-Error "La compilation Gradle a échoué avec le code $LASTEXITCODE."
             exit $LASTEXITCODE
         }
     } finally {

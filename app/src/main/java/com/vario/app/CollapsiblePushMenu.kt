@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,105 +34,115 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Cockpit vertical bar component integrating quick actions (stats, logs)
- * with the flight instrument ladder gauge / status indicator in the central cockpit area.
+ * Top header dropdown menu panel providing quick actions and device toggles.
  *
- * When collapsed (~44.dp):
- * - In flight Vz mode: Displays a compact expand toggle at top and the real-time VarioLadderGauge below.
- * - In stats/hike modes: Displays direct quick-action buttons (Stats 📊, Logs 📋) and mode badge.
+ * When collapsed:
+ * - Shows nothing (height 0.dp) — the toggle button resides directly in the HeaderBar.
  *
- * When expanded (~210.dp):
- * Smoothly pushes cockpit readouts to expose complete textual labels and actions.
+ * When expanded:
+ * - Slides down smoothly (~180.dp max height) with a scrollable grid/list of action tiles:
+ *   📊 Statistiques, 📋 Logs & Diagnostics, 🔌 Reconnexion USB, 🔇/🔊 Couper/Activer le son.
  *
  * Zero heap allocation on fast-path: pure Compose UI outside the audio & telemetry loop.
  */
 @Composable
-fun CockpitVerticalBar(
+fun HeaderMenuPanel(
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
     onOpenStats: () -> Unit,
     onOpenDebug: () -> Unit,
-    isFlightVzView: Boolean,
-    gaugeContent: @Composable () -> Unit = {},
-    badgeText: String? = null,
+    onReconnectUsb: () -> Unit,
+    onToggleMute: () -> Unit,
+    isMuted: Boolean,
+    isUsbConnected: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val animatedWidth by animateDpAsState(
-        targetValue = if (isExpanded) 210.dp else 44.dp,
+    val animatedHeight by animateDpAsState(
+        targetValue = if (isExpanded) 180.dp else 0.dp,
         animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
-        label = "cockpitVerticalBarWidth"
+        label = "headerMenuPanelHeight"
     )
 
-    Surface(
-        modifier = modifier
-            .width(animatedWidth)
-            .height(170.dp),
-        shape = RoundedCornerShape(10.dp),
-        color = Color(0xFF0F172A),
-        tonalElevation = 4.dp
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(10.dp))
+    if (animatedHeight > 0.dp) {
+        Surface(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(animatedHeight)
+                .clip(RoundedCornerShape(10.dp)),
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFF0F172A),
+            tonalElevation = 4.dp
         ) {
-            if (isExpanded) {
-                // Expanded Menu: Full labels and action entries
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(10.dp))
+                    .padding(8.dp)
+            ) {
                 Column(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(vertical = 8.dp, horizontal = 6.dp),
-                    verticalArrangement = Arrangement.SpaceBetween,
-                    horizontalAlignment = Alignment.Start
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
+                    // Row 1: Statistiques & Logs
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Collapse Header Row
-                        VerticalBarItem(
-                            icon = "«",
-                            label = "Réduire",
-                            isExpanded = true,
-                            onClick = onToggleExpand,
-                            tint = Color(0xFF38BDF8)
-                        )
-
-                        Spacer(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(Color(0xFF1E293B))
-                        )
-
-                        // 1. Activity Statistics Window
-                        VerticalBarItem(
+                        MenuTileItem(
                             icon = "📊",
                             label = "Statistiques",
-                            isExpanded = true,
                             onClick = {
                                 onToggleExpand()
                                 onOpenStats()
                             },
-                            tint = Color(0xFFFACC15)
+                            tint = Color(0xFFFACC15),
+                            modifier = Modifier.weight(1f)
                         )
 
-                        // 2. Logs & Diagnostics Modal
-                        VerticalBarItem(
+                        MenuTileItem(
                             icon = "📋",
-                            label = "Logs & Diagnostics",
-                            isExpanded = true,
+                            label = "Logs & Diag",
                             onClick = {
                                 onToggleExpand()
                                 onOpenDebug()
                             },
-                            tint = Color(0xFF94A3B8)
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.weight(1f)
                         )
                     }
 
-                    // Branding indicator
-                    Box(
+                    // Row 2: USB Reconnect & Audio Mute
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MenuTileItem(
+                            icon = "🔌",
+                            label = if (isUsbConnected) "USB connecté" else "Reconnecter USB",
+                            onClick = {
+                                onToggleExpand()
+                                onReconnectUsb()
+                            },
+                            tint = if (isUsbConnected) Color(0xFF4ADE80) else Color(0xFF38BDF8),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        MenuTileItem(
+                            icon = if (isMuted) "🔇" else "🔊",
+                            label = if (isMuted) "Son coupé" else "Son actif",
+                            onClick = onToggleMute,
+                            tint = if (isMuted) Color(0xFFF87171) else Color(0xFF4ADE80),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // Bottom info label
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -142,187 +154,84 @@ fun CockpitVerticalBar(
                         )
                     }
                 }
-            } else {
-                // Collapsed Compact Vertical Band
-                if (isFlightVzView) {
-                    // Flight Vz Mode: Top expand toggle + Real-time Ladder Gauge
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(vertical = 4.dp, horizontal = 3.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFF131926))
-                                .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(6.dp))
-                                .clickable(onClick = onToggleExpand),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "»",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF38BDF8)
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            gaugeContent()
-                        }
-                    }
-                } else {
-                    // Stats / Hike / Non-Flight Mode: Action buttons + Mode indicator
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(vertical = 6.dp, horizontal = 3.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(26.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFF131926))
-                                .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(6.dp))
-                                .clickable(onClick = onToggleExpand),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "»",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF38BDF8)
-                            )
-                        }
-
-                        // 1. Stats action button
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF131926))
-                                .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp))
-                                .clickable(onClick = onOpenStats),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(text = "📊", fontSize = 17.sp)
-                        }
-
-                        // 2. Debug & logs action button
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF131926))
-                                .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp))
-                                .clickable(onClick = onOpenDebug),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(text = "📋", fontSize = 17.sp)
-                        }
-
-                        // Mode indicator badge (e.g. ▲D±▼ or emoji)
-                        if (badgeText != null) {
-                            Text(
-                                text = badgeText,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF64748B)
-                            )
-                        } else {
-                            Text(
-                                text = "VA",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF475569)
-                            )
-                        }
-                    }
-                }
             }
         }
     }
 }
 
 /**
- * Single actionable item entry inside [CockpitVerticalBar].
+ * Clickable tile entry inside [HeaderMenuPanel].
  */
 @Composable
-private fun VerticalBarItem(
+fun MenuTileItem(
     icon: String,
     label: String,
-    isExpanded: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     tint: Color = Color.White
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(40.dp)
+            .height(42.dp)
             .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
             .background(Color(0xFF131926))
             .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp))
-            .padding(horizontal = 6.dp),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start
     ) {
         Box(
-            modifier = Modifier.size(28.dp),
+            modifier = Modifier.size(26.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = icon,
-                fontSize = 16.sp
+                fontSize = 15.sp
             )
         }
 
-        if (isExpanded && label.isNotEmpty()) {
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = label,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = tint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Spacer(modifier = Modifier.width(6.dp))
+
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
 /**
- * Backward compatibility wrapper for [CockpitVerticalBar].
+ * Backward compatibility wrapper for [HeaderMenuPanel].
  */
-@Deprecated("Use CockpitVerticalBar integrated directly into the central cockpit vertical band")
+@Deprecated("Use HeaderMenuPanel integrated directly into the top header bar area")
 @Suppress("UNUSED_PARAMETER")
 @Composable
 fun CollapsiblePushMenu(
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
     onOpenStats: () -> Unit,
-    onOpenMap: () -> Unit,
+    onOpenMap: () -> Unit = {},
     onOpenDebug: () -> Unit,
-    onToggleMute: () -> Unit,
-    isMuted: Boolean,
+    onToggleMute: () -> Unit = {},
+    isMuted: Boolean = false,
+    isUsbConnected: Boolean = false,
+    onReconnectUsb: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    CockpitVerticalBar(
+    HeaderMenuPanel(
         isExpanded = isExpanded,
         onToggleExpand = onToggleExpand,
         onOpenStats = onOpenStats,
         onOpenDebug = onOpenDebug,
-        isFlightVzView = false,
+        onReconnectUsb = onReconnectUsb,
+        onToggleMute = onToggleMute,
+        isMuted = isMuted,
+        isUsbConnected = isUsbConnected,
         modifier = modifier
     )
 }

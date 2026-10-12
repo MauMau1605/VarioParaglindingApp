@@ -58,7 +58,12 @@ data class TrackSummary(
     val activityType: ActivityType = ActivityType.SIMPLE_FLIGHT,
     val theme: ActivityTheme = ActivityTheme.FLIGHT,
     val airDurationSec: Long = 0L,
-    val airDistanceM: Float = 0f
+    val airDistanceM: Float = 0f,
+    val hikeDurationSec: Long = 0L,
+    val hikeDistanceM: Float = 0f,
+    val flyDurationSec: Long = 0L,
+    val flyDistanceM: Float = 0f,
+    val flyMaxAltitudeM: Float = 0f
 )
 
 /**
@@ -302,10 +307,33 @@ object GpxTrackManager {
 
         return files.sortedByDescending { it.lastModified() }.mapNotNull { file ->
             val summary = parseTrackSummary(file) ?: return@mapNotNull null
-            if (summary.activityType == ActivityType.SKI_TOURING || summary.theme == ActivityTheme.SKI) {
+            val enriched = if (summary.activityType == ActivityType.SKI_TOURING || summary.theme == ActivityTheme.SKI) {
                 parseTrackWithAirMetrics(file) ?: summary
             } else {
                 summary
+            }
+            // For Hike & Fly tracks, compute split metrics from GPX phase data
+            if (enriched.activityType == ActivityType.HIKE_AND_FLY) {
+                try {
+                    val points = loadTrackPoints(file)
+                    if (points.isNotEmpty()) {
+                        val split = ActivityStatsCalculator.splitHikeAndFlyMetrics(points)
+                        enriched.copy(
+                            hikeDurationSec = split.hikeDurationSec,
+                            hikeDistanceM = split.hikeDistanceM,
+                            flyDurationSec = split.flyDurationSec,
+                            flyDistanceM = split.flyDistanceM,
+                            flyMaxAltitudeM = split.flyMaxAltitudeM
+                        )
+                    } else {
+                        enriched
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error computing split metrics for ${file.name}", e)
+                    enriched
+                }
+            } else {
+                enriched
             }
         }
     }

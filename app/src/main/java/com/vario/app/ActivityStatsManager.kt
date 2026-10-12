@@ -79,9 +79,88 @@ data class ActivityStats(
 )
 
 /**
+ * Decomposed metrics for a Hike & Fly activity, separating hiking and flying phases
+ * based on GPX track point phase annotations.
+ */
+data class SplitActivityMetrics(
+    val hikeDurationSec: Long = 0L,
+    val hikeDistanceM: Float = 0f,
+    val hikeElevationGainM: Float = 0f,
+    val flyDurationSec: Long = 0L,
+    val flyDistanceM: Float = 0f,
+    val flyMaxAltitudeM: Float = 0f
+)
+
+/**
  * Calculator and filtering engine for archived GPX tracks and activity statistics.
  */
 object ActivityStatsCalculator {
+
+    /**
+     * Splits a Hike & Fly track's metrics into hiking and flying phases.
+     * Uses the `phase` field from GPX track points. Falls back to speed/vz heuristics
+     * for older GPX files without phase annotations.
+     */
+    fun splitHikeAndFlyMetrics(points: List<TrackPoint>): SplitActivityMetrics {
+        if (points.size < 2) return SplitActivityMetrics()
+
+        var hikeDurSec = 0L
+        var hikeDistM = 0f
+        var hikeGainM = 0f
+        var flyDurSec = 0L
+        var flyDistM = 0f
+        var flyMaxAlt = 0f
+
+        fun resolvePhase(point: TrackPoint): String {
+            if (point.phase.equals("HIKING", ignoreCase = true)) return "HIKING"
+            if (point.phase.equals("FLYING", ignoreCase = true)) return "FLYING"
+            // Heuristic fallback for tracks without phase annotations
+            return if (point.speedKmh >= 20f && (kotlin.math.abs(point.vzMs) > 0.2f || point.speedKmh >= 32f)) {
+                "FLYING"
+            } else {
+                "HIKING"
+            }
+        }
+
+        for (i in 1 until points.size) {
+            val prev = points[i - 1]
+            val curr = points[i]
+            val dtSec = ((curr.timeMs - prev.timeMs) / 1000L).coerceIn(0L, 60L)
+            val distM = VarioMath.distanceBetweenM(
+                prev.latitude, prev.longitude,
+                curr.latitude, curr.longitude
+            )
+            val phase = if (resolvePhase(curr) == "FLYING" || resolvePhase(prev) == "FLYING") {
+                "FLYING"
+            } else {
+                "HIKING"
+            }
+
+            when (phase) {
+                "HIKING" -> {
+                    hikeDurSec += dtSec
+                    hikeDistM += distM
+                    val elevDelta = curr.altitudeM - prev.altitudeM
+                    if (elevDelta > 0f) hikeGainM += elevDelta
+                }
+                "FLYING" -> {
+                    flyDurSec += dtSec
+                    flyDistM += distM
+                    if (curr.altitudeM > flyMaxAlt) flyMaxAlt = curr.altitudeM
+                    if (prev.altitudeM > flyMaxAlt) flyMaxAlt = prev.altitudeM
+                }
+            }
+        }
+
+        return SplitActivityMetrics(
+            hikeDurationSec = hikeDurSec,
+            hikeDistanceM = hikeDistM,
+            hikeElevationGainM = hikeGainM,
+            flyDurationSec = flyDurSec,
+            flyDistanceM = flyDistM,
+            flyMaxAltitudeM = flyMaxAlt
+        )
+    }
 
     /**
      * Calculates flight time (in seconds) and air distance (in meters) from points where
@@ -133,25 +212,49 @@ object ActivityStatsCalculator {
         var maxAltitudeM = 0f
 
         for (track in filtered) {
-            totalDurationSec += track.durationSec
-            totalDistanceM += track.totalDistanceM
+            // For Hike & Fly tracks, use split metrics when filtering by specific theme
+            if (track.activityType == ActivityType.HIKE_AND_FLY && theme != ActivityTheme.ALL) {
+                when (theme) {
+                    ActivityTheme.HIKING -> {
+                        totalDurationSec += track.hikeDurationSec
+                        totalDistanceM += track.hikeDistanceM
+                        // No flight time contribution for hiking stats
+                    }
+                    ActivityTheme.FLIGHT -> {
+                        totalDurationSec += track.flyDurationSec
+                        totalDistanceM += track.flyDistanceM
+                        totalFlightTimeSec += track.flyDurationSec
+                        totalAirDistanceM += track.flyDistanceM
+                        if (track.flyMaxAltitudeM > maxAltitudeM) {
+                            maxAltitudeM = track.flyMaxAltitudeM
+                        }
+                    }
+                    else -> {
+                        totalDurationSec += track.durationSec
+                        totalDistanceM += track.totalDistanceM
+                    }
+                }
+            } else {
+                totalDurationSec += track.durationSec
+                totalDistanceM += track.totalDistanceM
 
-            val flightTime = when {
-                track.airDurationSec > 0L -> track.airDurationSec
-                track.activityType == ActivityType.SIMPLE_FLIGHT -> track.durationSec
-                else -> 0L
-            }
-            val airDist = when {
-                track.airDistanceM > 0f -> track.airDistanceM
-                track.activityType == ActivityType.SIMPLE_FLIGHT -> track.totalDistanceM
-                else -> 0f
-            }
+                val flightTime = when {
+                    track.airDurationSec > 0L -> track.airDurationSec
+                    track.activityType == ActivityType.SIMPLE_FLIGHT -> track.durationSec
+                    else -> 0L
+                }
+                val airDist = when {
+                    track.airDistanceM > 0f -> track.airDistanceM
+                    track.activityType == ActivityType.SIMPLE_FLIGHT -> track.totalDistanceM
+                    else -> 0f
+                }
 
-            totalFlightTimeSec += flightTime
-            totalAirDistanceM += airDist
+                totalFlightTimeSec += flightTime
+                totalAirDistanceM += airDist
 
-            if (track.maxAltitudeM > maxAltitudeM) {
-                maxAltitudeM = track.maxAltitudeM
+                if (track.maxAltitudeM > maxAltitudeM) {
+                    maxAltitudeM = track.maxAltitudeM
+                }
             }
         }
 

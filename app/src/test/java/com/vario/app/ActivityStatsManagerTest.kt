@@ -377,5 +377,96 @@ class ActivityStatsManagerTest {
         assertEquals(0L, statsHike.totalFlightTimeSec)
         assertEquals(0f, statsHike.totalAirDistanceM, 0.001f)
     }
+
+    @Test
+    fun splitHikeAndFlyMetrics_separatesHikeAndFlightPhases() {
+        val baseTime = 1700000000000L
+        val points = listOf(
+            // Hike segment: 3 points, 2 intervals of 60s, gaining altitude
+            TrackPoint(45.0, 6.0, 1000f, vzMs = 0.1f, speedKmh = 4f, timeMs = baseTime, phase = "HIKING"),
+            TrackPoint(45.001, 6.001, 1100f, vzMs = 0.2f, speedKmh = 4.5f, timeMs = baseTime + 60_000L, phase = "HIKING"),
+            TrackPoint(45.002, 6.002, 1250f, vzMs = 0.1f, speedKmh = 3.8f, timeMs = baseTime + 120_000L, phase = "HIKING"),
+            // Takeoff / Flying segment: 2 intervals of 30s, higher speed, ceiling 1800m
+            TrackPoint(45.003, 6.003, 1400f, vzMs = 2.5f, speedKmh = 36f, timeMs = baseTime + 150_000L, phase = "FLYING"),
+            TrackPoint(45.010, 6.010, 1800f, vzMs = 1.0f, speedKmh = 40f, timeMs = baseTime + 180_000L, phase = "FLYING")
+        )
+
+        val split = ActivityStatsCalculator.splitHikeAndFlyMetrics(points)
+
+        // Hike: point 0 to 1 (60s) + point 1 to 2 (60s) = 120s
+        assertEquals(120L, split.hikeDurationSec)
+        assertTrue("Hike distance should be > 0", split.hikeDistanceM > 0f)
+        assertEquals(250f, split.hikeElevationGainM, 0.1f) // (1100-1000) + (1250-1100) = 250m
+
+        // Fly: point 2->3 (30s) + point 3->4 (30s) = 60s
+        assertEquals(60L, split.flyDurationSec)
+        assertTrue("Fly distance should be > 0", split.flyDistanceM > 0f)
+        assertEquals(1800f, split.flyMaxAltitudeM, 0.1f)
+    }
+
+    @Test
+    fun splitHikeAndFlyMetrics_fallbackHeuristicWhenPhaseEmpty() {
+        val baseTime = 1700000000000L
+        val points = listOf(
+            // Ground/Hike point: slow speed -> heuristic classifies as HIKING
+            TrackPoint(45.0, 6.0, 1000f, vzMs = 0.1f, speedKmh = 5f, timeMs = baseTime, phase = ""),
+            TrackPoint(45.001, 6.001, 1050f, vzMs = 0.1f, speedKmh = 4f, timeMs = baseTime + 30_000L, phase = ""),
+            // Airborne point: speed >= 20 km/h and |vz| > 0.2 -> heuristic classifies as FLYING
+            TrackPoint(45.005, 6.005, 1200f, vzMs = 2.0f, speedKmh = 35f, timeMs = baseTime + 60_000L, phase = ""),
+            TrackPoint(45.010, 6.010, 1500f, vzMs = 1.5f, speedKmh = 38f, timeMs = baseTime + 90_000L, phase = "")
+        )
+
+        val split = ActivityStatsCalculator.splitHikeAndFlyMetrics(points)
+        assertTrue("Hike duration should be recorded via heuristic", split.hikeDurationSec > 0L)
+        assertTrue("Fly duration should be recorded via heuristic", split.flyDurationSec > 0L)
+        assertEquals(1500f, split.flyMaxAltitudeM, 0.1f)
+    }
+
+    @Test
+    fun calculateStats_hikeAndFlyDecoupling_doesNotDoubleCount() {
+        val dummyFile = File("hikefly_test.gpx")
+        // 4h total session: 3h (10800s) hike, 1h (3600s) flight
+        val hikeAndFlyTrack = TrackSummary(
+            id = "hf1",
+            fileName = "hikefly_1.gpx",
+            file = dummyFile,
+            startTimeMs = 1000L,
+            durationSec = 14400L, // 4 hours total
+            maxAltitudeM = 2200f,
+            totalDistanceM = 20000f, // 20 km total
+            pointCount = 800,
+            activityType = ActivityType.HIKE_AND_FLY,
+            theme = ActivityTheme.FLIGHT,
+            hikeDurationSec = 10800L, // 3h hike
+            hikeDistanceM = 8000f,     // 8 km hike
+            flyDurationSec = 3600L,   // 1h fly
+            flyDistanceM = 12000f,    // 12 km fly
+            flyMaxAltitudeM = 2200f
+        )
+
+        val tracks = listOf(hikeAndFlyTrack)
+
+        // 1. Stats when filtered for HIKING: must ONLY include hike portion (3h, 8km)
+        val hikeStats = ActivityStatsCalculator.calculateStats(ActivityTheme.HIKING, tracks)
+        assertEquals(1, hikeStats.totalActivities)
+        assertEquals(10800L, hikeStats.totalDurationSec) // 3h, NOT 4h!
+        assertEquals(8000f, hikeStats.totalDistanceM, 0.001f) // 8km, NOT 20km!
+        assertEquals(0L, hikeStats.totalFlightTimeSec)
+
+        // 2. Stats when filtered for FLIGHT: must ONLY include flight portion (1h, 12km)
+        val flightStats = ActivityStatsCalculator.calculateStats(ActivityTheme.FLIGHT, tracks)
+        assertEquals(1, flightStats.totalActivities)
+        assertEquals(3600L, flightStats.totalDurationSec) // 1h, NOT 4h!
+        assertEquals(12000f, flightStats.totalDistanceM, 0.001f) // 12km, NOT 20km!
+        assertEquals(3600L, flightStats.totalFlightTimeSec)
+        assertEquals(12000f, flightStats.totalAirDistanceM, 0.001f)
+        assertEquals(2200f, flightStats.maxAltitudeM, 0.001f)
+
+        // 3. Stats when filtered for ALL: retains the overall session totals
+        val allStats = ActivityStatsCalculator.calculateStats(ActivityTheme.ALL, tracks)
+        assertEquals(1, allStats.totalActivities)
+        assertEquals(14400L, allStats.totalDurationSec) // 4h total session
+        assertEquals(20000f, allStats.totalDistanceM, 0.001f) // 20km total
+    }
 }
 

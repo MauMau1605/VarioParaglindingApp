@@ -304,9 +304,9 @@ stateDiagram-v2
 ## 9. Jetpack Compose Cockpit & Diagnostic Modal
 
 - **`MainActivity.kt`:** Renders the primary flight cockpit using Jetpack Compose with two main views:
-  - **VARIO Screen:** Large high-contrast digital Vz, integrated central vertical band (`CockpitVerticalBar`) unifying the analog climb/sink ladder gauge with quick-action tools (Activity Statistics, Diagnostic Logs), adaptive altitude readout (dual absolute QNH/MSL altitude and real-time cyan estimated ground clearance AGL in flight mode; clean single MSL altitude readout in ground/hike modes), ceiling attained, distance to takeoff, flight timer, and deduplicated controls.
+  - **VARIO Screen:** Large high-contrast digital Vz occupying the full central width, adaptive altitude readout (dual absolute QNH/MSL altitude and real-time cyan estimated ground clearance AGL in flight mode; clean single MSL altitude readout in ground/hike modes), ceiling attained, distance to takeoff, flight timer, and a top-header dropdown menu panel (`HeaderMenuPanel`) for quick actions.
   - **MAP Screen:** Full-screen vector/raster map with pilot heading arrow, thermal breadcrumbs, glide cone reach, and itinerary planning tools.
-- **`CollapsiblePushMenu.kt` (`CockpitVerticalBar`):** Reusable vertical band component anchored on the left of the central cockpit instruments. In flight mode, displays the real-time ladder gauge with an expand trigger; in ground and stats modes, displays direct quick-action buttons for activity stats and diagnostic logs, smoothly expanding to 210 dp without requiring a dedicated full-height sidebar.
+- **`CollapsiblePushMenu.kt` (`HeaderMenuPanel`):** Horizontal dropdown panel integrated into the top header bar. Toggled via a hamburger button (≡) in the HeaderBar, it slides down with an animated height transition (0→180dp) revealing a scrollable grid of action tiles: 📊 Statistiques, 📋 Logs & Diag, 🔌 USB reconnect (with connection status), 🔇/🔊 Audio mute toggle. Supports vertical scrolling when more items are added.
 - **`DebugModal.kt` & `DebugLogger.kt`:** Built-in engineering diagnostic terminal:
   - Raw LK8EX1 sentence live terminal with ASCII inspection.
   - Frame counter (valid frames vs checksum error count).
@@ -388,7 +388,14 @@ Barometric pressure sensor noise or altitude jitter (~0.1 to 0.5 m) can artifici
     2. **Page 1 (Dénivelé Total Session):** Total cumulative $D^+$ and $D^-$ since session start (including hike if Hike & Fly, or solo flight climb/sink).
     3. **Page 2 (Statistiques Décollage):** Flight-only stats since flight takeoff ($D^+_{\text{vol}}$, $D^-_{\text{vol}}$, and peak climb rate $V_{z,\max}$).
 
----
+### Hike & Fly Activity Statistics Decoupling
+When computing aggregated statistics per `ActivityTheme`, Hike & Fly tracks are **decomposed** into their hiking and flying phases to prevent double-counting:
+- `ActivityStatsCalculator.splitHikeAndFlyMetrics(points)` traverses GPX track points and classifies each segment by the `phase` annotation (`HIKING` or `FLYING`).
+- **Fallback heuristic** for older GPX files without `phase` tags: segments with $v \ge 20\text{ km/h}$ and $|V_z| > 0.2\text{ m/s}$ (or $v \ge 32\text{ km/h}$) are classified as `FLYING`; all others as `HIKING`.
+- `TrackSummary` is enriched with split fields (`hikeDurationSec`, `hikeDistanceM`, `flyDurationSec`, `flyDistanceM`, `flyMaxAltitudeM`) pre-computed during track loading.
+- When `calculateStats()` filters by `HIKING` theme, only the hike portion of H&F tracks contributes to totals. When filtering by `FLIGHT`, only the flight portion contributes.
+- `ActivityStatsScreen` displays split phase badges (🥾 hike duration/distance, 🪂 fly duration/distance) on individual H&F track cards.
+
 
 ## 11. GPX Track Profile & Interactive Map Scrubber
 
