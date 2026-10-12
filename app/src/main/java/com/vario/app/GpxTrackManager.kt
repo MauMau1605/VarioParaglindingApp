@@ -982,4 +982,67 @@ object GpxTrackManager {
         null
     }
 }
+
+    /**
+     * Imports a GPX stream into the tracks directory under the given file name.
+     */
+    fun importTrackFromStream(
+        context: Context,
+        inputStream: InputStream,
+        fileName: String = "imported_${System.currentTimeMillis()}.gpx"
+    ): File? {
+        return try {
+            val dir = getTracksDirectory(context)
+            var targetFile = File(dir, fileName)
+            if (targetFile.exists()) {
+                val base = targetFile.nameWithoutExtension
+                targetFile = File(dir, "${base}_${System.currentTimeMillis()}.gpx")
+            }
+            inputStream.use { input ->
+                targetFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            if (targetFile.exists() && targetFile.length() > 0) {
+                Log.i(TAG, "Successfully imported GPX stream to ${targetFile.absolutePath}")
+                targetFile
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to import track from stream", e)
+            null
+        }
+    }
+
+    /**
+     * Imports a GPX file from an Android content URI (e.g. from Storage Access Framework file picker).
+     * Copies the content to the app's track directory and returns the saved File, or null if failed.
+     */
+    fun importTrackFromUri(context: Context, uri: Uri): File? {
+        return try {
+            val contentResolver = context.contentResolver
+            var displayName = "imported_${System.currentTimeMillis()}.gpx"
+            try {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIdx != -1 && cursor.moveToFirst()) {
+                        val name = cursor.getString(nameIdx)
+                        if (!name.isNullOrBlank()) {
+                            displayName = if (name.endsWith(".gpx", ignoreCase = true)) name else "$name.gpx"
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not resolve display name from URI: $uri", e)
+            }
+
+            contentResolver.openInputStream(uri)?.use { stream ->
+                importTrackFromStream(context, stream, displayName)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to import track from URI: $uri", e)
+            null
+        }
+    }
 }

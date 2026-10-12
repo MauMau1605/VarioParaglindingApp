@@ -450,5 +450,17 @@ class MapAndTrackTest {
 
         GpxTrackManager.clearCurrentTrack()
     }
+
+    @Test
+    fun testEmptyOrInvalidTrackFileHandling() {
+        val emptyFile = File(tempDir, "empty_invalid.gpx")
+        emptyFile.writeText("")
+
+        val points = GpxTrackManager.loadTrackPoints(emptyFile)
+        assertThat(points).isEmpty()
+
+        val waypoints = GpxTrackManager.loadTrackWaypoints(emptyFile)
+        assertThat(waypoints).isEmpty()
+    }
 }
 

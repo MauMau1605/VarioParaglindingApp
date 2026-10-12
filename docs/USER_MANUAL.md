@@ -273,10 +273,14 @@ Once airborne in flight mode, you can tap anywhere on the central vertical speed
 
 When viewing previously saved tracks or loading external GPX tracks on the **CARTE (MAP)** tab:
 
-### 1. Automatic Map Centering on Track Start
-- As soon as a track is selected from the file picker, the map **automatically centers and zooms (level 15)** onto the track's starting point (trailhead or takeoff fix).
-- Live pilot auto-tracking is temporarily suspended while you inspect the track, preventing the map from snapping back to your current location.
-- Embedded transition waypoints (e.g., *Départ Rando*, *Décollage / Vol*, *Atterrissage*) are displayed with distinct visual markers on the map.
+### 1. Sélection des traces et explorateur natif de fichiers
+- **Menu Traces (`📁`) :** Accessible directement depuis la barre HUD supérieure de la carte.
+- **Sélection directe :** Touchez directement une carte de trace enregistrée dans la liste ou cliquez sur **"Afficher"** pour la charger sur la carte.
+- **Indicateur de trace active :** La trace actuellement affichée est surlignée avec un contour cyan et un badge **"✓ Affichée"**, et peut être retirée de la vue à tout moment via le bouton **"Masquer"**.
+- **Explorateur natif de fichiers (`📂 Ouvrir fichier...`) :** Permet d'importer et d'afficher instantanément n'importe quel fichier GPX externe depuis l'appareil (Téléchargements, Drive, WhatsApp, carte SD) via le sélecteur natif Android (*Storage Access Framework*).
+- **Recentrage automatique :** Dès la sélection d'une trace, la carte se **centre automatiquement et règle le zoom (niveau 15)** sur le point de départ de la trace (décollage ou début d'itinéraire).
+- Le suivi en temps réel du pilote est temporairement suspendu pendant l'inspection afin d'éviter tout recentrage intempestif.
+- Les points de cheminement intégrés (*Départ Rando*, *Décollage / Vol*, *Atterrissage*) s'affichent avec des marqueurs visuels distincts.
 
 ### 2. Track Summary Banner & Details Button
 - A floating header card displays the track filename, point count, and waypoint count.

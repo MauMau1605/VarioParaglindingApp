@@ -3,8 +3,11 @@ package com.vario.app
 import android.content.Context
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint
+import android.net.Uri
 import android.view.MotionEvent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -805,6 +808,7 @@ fun MapScreen(
                         val startGeo = GeoPoint(startPt.latitude, startPt.longitude)
                         mapView.setExpectedCenter(startGeo)
                         mapView.controller.setZoom(15.0)
+                        mapView.controller.setCenter(startGeo)
                         mapView.controller.animateTo(startGeo)
                     }
                 } else {
@@ -1177,27 +1181,39 @@ fun MapScreen(
         // ── Tracks Archive Bottom Sheet ──────────────────────────────────────
         if (showTracksSheet) {
             TrackHistoryBottomSheet(
+                currentlySelectedTrackName = loadedPastTrackName,
                 onDismiss = { showTracksSheet = false },
                 onSelectTrackToView = { file ->
                     val points = GpxTrackManager.loadTrackPoints(file)
                     val waypoints = GpxTrackManager.loadTrackWaypoints(file)
-                    loadedPastTrack = points
-                    loadedPastTrackWaypoints = waypoints
-                    loadedPastTrackName = file.name
-                    lastCenteredTrackName = file.name
-                    showTrackDetails = true
-                    scrubbedPointIndex = null
-                    isFollowingPilot = false
                     if (points.isNotEmpty()) {
+                        loadedPastTrack = points
+                        loadedPastTrackWaypoints = waypoints
+                        loadedPastTrackName = file.name
+                        showTrackDetails = true
+                        scrubbedPointIndex = null
+                        isFollowingPilot = false
                         val startPt = points.first()
                         val startGeo = GeoPoint(startPt.latitude, startPt.longitude)
                         mapViewRef?.let { mv ->
-                            mv.setExpectedCenter(startGeo)
                             mv.controller.setZoom(15.0)
+                            mv.controller.setCenter(startGeo)
                             mv.controller.animateTo(startGeo)
                         }
+                        showTracksSheet = false
+                    } else {
+                        Toast.makeText(context, "Trace vide ou format non supporté", Toast.LENGTH_SHORT).show()
                     }
-                    showTracksSheet = false
+                },
+                onClearSelectedTrack = {
+                    loadedPastTrack = null
+                    loadedPastTrackName = null
+                    loadedPastTrackWaypoints = emptyList()
+                    lastCenteredTrackName = null
+                    showTrackDetails = false
+                    scrubbedPointIndex = null
+                    isFollowingPilot = true
+                    mapViewRef?.invalidate()
                 }
             )
         }
@@ -2313,12 +2329,33 @@ private fun LegendBullet(color: Color, text: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TrackHistoryBottomSheet(
+    currentlySelectedTrackName: String? = null,
     onDismiss: () -> Unit,
-    onSelectTrackToView: (File) -> Unit
+    onSelectTrackToView: (File) -> Unit,
+    onClearSelectedTrack: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var tracks by remember { mutableStateOf(GpxTrackManager.getSavedTracks(context)) }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val imported = GpxTrackManager.importTrackFromUri(context, uri)
+            if (imported != null) {
+                val pts = GpxTrackManager.loadTrackPoints(imported)
+                if (pts.isNotEmpty()) {
+                    tracks = GpxTrackManager.getSavedTracks(context)
+                    onSelectTrackToView(imported)
+                } else {
+                    Toast.makeText(context, "Le fichier GPX sélectionné ne contient aucun point valide.", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(context, "Erreur lors de l'importation du fichier GPX.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -2336,32 +2373,59 @@ private fun TrackHistoryBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Traces GPX Enregistrées",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    text = "${tracks.size} vols",
-                    fontSize = 14.sp,
-                    color = Color(0xFF94A3B8)
-                )
+                Column {
+                    Text(
+                        text = "Traces GPX",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "${tracks.size} traces enregistrées",
+                        fontSize = 13.sp,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        filePickerLauncher.launch(arrayOf("*/*"))
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text("📂 Ouvrir fichier...", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
 
             if (tracks.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(150.dp),
+                        .height(180.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "Aucune trace enregistrée pour le moment.\nLes traces sont créées lors des vols.",
-                        color = Color(0xFF64748B),
-                        textAlign = TextAlign.Center,
-                        fontSize = 14.sp
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Aucune trace enregistrée pour le moment.\nLes traces sont créées lors des vols.",
+                            color = Color(0xFF64748B),
+                            textAlign = TextAlign.Center,
+                            fontSize = 14.sp
+                        )
+                        Button(
+                            onClick = {
+                                filePickerLauncher.launch(arrayOf("*/*"))
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                        ) {
+                            Text("📂 Importer un fichier GPX")
+                        }
+                    }
                 }
             } else {
                 LazyColumn(
@@ -2375,11 +2439,22 @@ private fun TrackHistoryBottomSheet(
                         val dateStr = dateFmt.format(Date(track.startTimeMs))
                         val durationMin = track.durationSec / 60
                         val durationSec = track.durationSec % 60
+                        val isSelected = track.file.name == currentlySelectedTrackName
 
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    if (isSelected) {
+                                        onClearSelectedTrack?.invoke()
+                                    } else {
+                                        onSelectTrackToView(track.file)
+                                    }
+                                },
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            border = if (isSelected) BorderStroke(1.5.dp, Color(0xFF38BDF8)) else null
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Row(
@@ -2387,12 +2462,32 @@ private fun TrackHistoryBottomSheet(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = dateStr,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color.White
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "${track.activityType.emoji} $dateStr",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color.White
+                                        )
+                                        if (isSelected) {
+                                            Surface(
+                                                color = Color(0xFF0284C7).copy(alpha = 0.25f),
+                                                shape = RoundedCornerShape(4.dp),
+                                                border = BorderStroke(1.dp, Color(0xFF38BDF8))
+                                            ) {
+                                                Text(
+                                                    text = "✓ Affichée",
+                                                    color = Color(0xFF38BDF8),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                     Text(
                                         text = String.format(Locale.US, "%02d:%02d", durationMin, durationSec),
                                         fontSize = 14.sp,
@@ -2421,19 +2516,30 @@ private fun TrackHistoryBottomSheet(
 
                                 Spacer(modifier = Modifier.height(8.dp))
 
-                                // Actions: View, Share, Delete
+                                // Actions: View/Hide, Share, Delete
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.End,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Button(
-                                        onClick = { onSelectTrackToView(track.file) },
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Text("Afficher", fontSize = 12.sp)
+                                    if (isSelected) {
+                                        Button(
+                                            onClick = { onClearSelectedTrack?.invoke() },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569)),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("Masquer", fontSize = 12.sp)
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = { onSelectTrackToView(track.file) },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("Afficher", fontSize = 12.sp)
+                                        }
                                     }
 
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -2451,6 +2557,9 @@ private fun TrackHistoryBottomSheet(
 
                                     IconButton(
                                         onClick = {
+                                            if (isSelected) {
+                                                onClearSelectedTrack?.invoke()
+                                            }
                                             GpxTrackManager.deleteTrack(track.file)
                                             tracks = GpxTrackManager.getSavedTracks(context)
                                         },
