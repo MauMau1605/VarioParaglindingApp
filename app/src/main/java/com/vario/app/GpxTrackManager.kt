@@ -801,8 +801,12 @@ object GpxTrackManager {
 
     /**
      * Computes the complete flight / hike elevation and distance profile dataset from track points.
+     * Uses [ElevationHysteresisTracker] to calculate noise-immune cumulative elevation gain and loss.
      */
-    fun computeTrackProfile(points: List<TrackPoint>): TrackProfileData {
+    fun computeTrackProfile(
+        points: List<TrackPoint>,
+        hysteresisThresholdM: Float = 2.5f
+    ): TrackProfileData {
         if (points.isEmpty()) {
             return TrackProfileData(
                 points = emptyList(),
@@ -819,12 +823,13 @@ object GpxTrackManager {
             )
         }
 
+        val tracker = ElevationHysteresisTracker(hysteresisThresholdM)
+        tracker.reset(points.first().altitudeM)
+
         val profilePoints = ArrayList<TrackProfilePoint>(points.size)
         var cumDist = 0f
         var minAlt = points.first().altitudeM
         var maxAlt = points.first().altitudeM
-        var dPlus = 0f
-        var dMinus = 0f
         var maxSpeed = 0f
         var sumSpeed = 0f
         var maxClimb = 0f
@@ -839,13 +844,7 @@ object GpxTrackManager {
                     pt.latitude, pt.longitude
                 )
                 cumDist += segmentDist
-
-                val dAlt = pt.altitudeM - prev.altitudeM
-                if (dAlt > 0f) {
-                    dPlus += dAlt
-                } else {
-                    dMinus += kotlin.math.abs(dAlt)
-                }
+                tracker.update(pt.altitudeM)
             }
 
             if (pt.altitudeM < minAlt) minAlt = pt.altitudeM
@@ -884,8 +883,8 @@ object GpxTrackManager {
             totalDistanceM = cumDist,
             minAltitudeM = minAlt,
             maxAltitudeM = maxAlt,
-            elevationGainM = dPlus,
-            elevationLossM = dMinus,
+            elevationGainM = tracker.cumulativeGainM,
+            elevationLossM = tracker.cumulativeLossM,
             durationSec = durationSec,
             maxSpeedKmh = maxSpeed,
             avgSpeedKmh = avgSpeed,

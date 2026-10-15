@@ -100,16 +100,21 @@ object ActivityStatsCalculator {
      * Splits a Hike & Fly track's metrics into hiking and flying phases.
      * Uses the `phase` field from GPX track points. Falls back to speed/vz heuristics
      * for older GPX files without phase annotations.
+     * Uses [ElevationHysteresisTracker] to calculate noise-immune cumulative elevation gain for hiking.
      */
-    fun splitHikeAndFlyMetrics(points: List<TrackPoint>): SplitActivityMetrics {
+    fun splitHikeAndFlyMetrics(
+        points: List<TrackPoint>,
+        hysteresisThresholdM: Float = 2.5f
+    ): SplitActivityMetrics {
         if (points.size < 2) return SplitActivityMetrics()
 
         var hikeDurSec = 0L
         var hikeDistM = 0f
-        var hikeGainM = 0f
         var flyDurSec = 0L
         var flyDistM = 0f
         var flyMaxAlt = 0f
+
+        val hikeTracker = ElevationHysteresisTracker(hysteresisThresholdM)
 
         fun resolvePhase(point: TrackPoint): String {
             if (point.phase.equals("HIKING", ignoreCase = true)) return "HIKING"
@@ -120,6 +125,10 @@ object ActivityStatsCalculator {
             } else {
                 "HIKING"
             }
+        }
+
+        if (resolvePhase(points.first()) == "HIKING") {
+            hikeTracker.reset(points.first().altitudeM)
         }
 
         for (i in 1 until points.size) {
@@ -140,8 +149,7 @@ object ActivityStatsCalculator {
                 "HIKING" -> {
                     hikeDurSec += dtSec
                     hikeDistM += distM
-                    val elevDelta = curr.altitudeM - prev.altitudeM
-                    if (elevDelta > 0f) hikeGainM += elevDelta
+                    hikeTracker.update(curr.altitudeM)
                 }
                 "FLYING" -> {
                     flyDurSec += dtSec
@@ -155,7 +163,7 @@ object ActivityStatsCalculator {
         return SplitActivityMetrics(
             hikeDurationSec = hikeDurSec,
             hikeDistanceM = hikeDistM,
-            hikeElevationGainM = hikeGainM,
+            hikeElevationGainM = hikeTracker.cumulativeGainM,
             flyDurationSec = flyDurSec,
             flyDistanceM = flyDistM,
             flyMaxAltitudeM = flyMaxAlt
