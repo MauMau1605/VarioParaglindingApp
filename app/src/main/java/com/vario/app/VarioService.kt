@@ -121,7 +121,10 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
          * Sets the filter preset ([FilterPreset.SMOOTH], [FilterPreset.BALANCED], [FilterPreset.SENSITIVE]).
          */
         fun setFilterPreset(preset: FilterPreset) {
-            instance?.kalmanFilter?.preset = preset
+            instance?.let { service ->
+                service.kalmanFilter.preset = preset
+                service.updatePipelineConfiguration()
+            }
             val current = _dataFlow.value
             _dataFlow.value = current.copy(filterPreset = preset)
         }
@@ -141,7 +144,10 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
         fun setFlightMode(mode: FlightMode) {
             val current = _dataFlow.value
             if (current.sessionPhase == SessionPhase.IDLE) {
-                instance?.flightMode = mode
+                instance?.let { service ->
+                    service.flightMode = mode
+                    service.updatePipelineConfiguration()
+                }
                 _dataFlow.value = current.copy(flightMode = mode)
             }
         }
@@ -154,8 +160,11 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
             val current = _dataFlow.value
             if (current.sessionPhase == SessionPhase.IDLE) {
                 val mode = type.toFlightMode()
-                instance?.activityType = type
-                instance?.flightMode = mode
+                instance?.let { service ->
+                    service.activityType = type
+                    service.flightMode = mode
+                    service.updatePipelineConfiguration()
+                }
                 _dataFlow.value = current.copy(
                     activityType = type,
                     flightMode = mode
@@ -229,6 +238,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
                 usbPortOpen = connected,
                 isUsbScanning = if (connected) false else current.isUsbScanning
             )
+            instance?.updatePipelineConfiguration()
             instance?.updateNotification()
         }
 
@@ -334,8 +344,9 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
             get() = instance?.isSerialPortOpen() == true
 
         /**
-         * Computes vertical speed (Vz) from GPS altitude difference over time using an
+         * Pure fallback calculation of vertical speed (Vz) from GPS altitude difference over time using an
          * exponential moving average (EMA) filter, with raw speed clamped to [-20f, 20f] m/s.
+         * Note: Runtime multi-regime GPS filtering is performed by [AltitudeFilterPipeline.processGps].
          */
         fun computeGpsVz(
             currentAlt: Double,
@@ -351,9 +362,10 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
         }
 
         /**
-         * Derives vertical speed (Vz) from barometric altitude difference over time
+         * Pure fallback calculation of vertical speed (Vz) from barometric altitude difference over time
          * when the hardware sensor does not compute Vz (varioCmS == 0L or 99999L),
          * with raw speed clamped to [-20f, 20f] m/s and exponential moving average (EMA) smoothing.
+         * Note: Runtime barometric fusion is performed by [AltitudeFilterPipeline.processBaro].
          */
         fun computeBaroVz(
             calculatedAlt: Float,
@@ -370,8 +382,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
 
         /**
          * Pure calculation of cumulative positive elevation gain (D+), with noise filtering threshold.
-         * When newAlt exceeds lastAlt by at least [noiseThresholdM], adds diff to gain and advances lastAlt.
-         * When newAlt drops below lastAlt by at least [noiseThresholdM], updates lastAlt without modifying gain.
+         * Kept for backward compatibility with unit tests.
+         * Note: Production real-time elevation tracking uses stateful, zero-allocation [ElevationHysteresisTracker].
          */
         fun computeElevationGain(
             currentGainM: Float,
@@ -392,8 +404,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
 
         /**
          * Pure calculation of cumulative elevation loss (D-), with noise filtering threshold.
-         * When newAlt drops below lastAlt by at least [noiseThresholdM], adds drop to loss and advances lastAlt.
-         * When newAlt exceeds lastAlt by at least [noiseThresholdM], updates lastAlt without modifying loss.
+         * Kept for backward compatibility with unit tests.
+         * Note: Production real-time elevation tracking uses stateful, zero-allocation [ElevationHysteresisTracker].
          */
         fun computeElevationLoss(
             currentLossM: Float,
@@ -414,6 +426,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
 
         /**
          * Calculates cumulative positive gain (D+) and loss (D-) with noise filtering.
+         * Kept for backward compatibility with unit tests.
+         * Note: Production real-time elevation tracking uses stateful, zero-allocation [ElevationHysteresisTracker].
          * Returns Triple(newGainM, newLossM, newLastAltM).
          */
         fun computeElevationChanges(
