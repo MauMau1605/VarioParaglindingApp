@@ -199,6 +199,19 @@ Pilots can activate experimental smartphone IMU assistance from the **Filtrage**
   $$V_{z, k|k-1} = V_{z, k-1} + a_{z, world} \Delta t$$
 - **Zero Battery Draw when Disabled:** Sensors are dynamically unregistered when `isImuAssistEnabled = false`, preventing unnecessary power consumption.
 
+### Unified Multi-Regime Signal Processing Pipeline (`AltitudeFilterPipeline.kt`)
+The signal pipeline orchestrates a four-stage real-time filter chain executed with zero dynamic memory allocation on both 10 Hz barometric and 1 Hz GPS inputs:
+1. **Slew-Rate Limiter (Spike Rejection):** Enforces physical maximum vertical acceleration ($\Delta h / \Delta t \le \text{maxAltitudeSlewRateMs}$) to reject corrupted sensor frames and GPS multipath leaps.
+2. **State-Space Estimator (`VarioKalmanFilter`):** Continuous-discrete scalar Kalman estimator fusing altitude, raw vario, and IMU vertical acceleration.
+3. **Pedestrian EMA Damping:** Exponential moving average low-pass post-filter smoothing step shock impulses during hiking and running (`SessionPhase.HIKING`).
+4. **Zero-Velocity Clamp & Stationary Gate:** Clamps $V_z$ strictly to $0.0\text{ m/s}$ when estimated speed drops below the activity-adjusted deadband or ground speed is $< 0.5\text{ m/s}$.
+
+### Zero-Allocation Elevation Hysteresis Tracker (`ElevationHysteresisTracker.kt`)
+Computes noise-immune cumulative elevation gain ($D^+$) and loss ($D^-$) using a Peak-to-Valley Schmitt-trigger (Preisach hysteresis model):
+- Rejects micro-fluctuations and footstep oscillations within the configured hysteresis threshold (default $2.5\text{ m}$).
+- Direction reversals from climb to descent (and vice-versa) require a confirmed excursion exceeding the hysteresis deadband.
+- Operates purely on primitive float fields in $O(1)$ time with zero GC allocations.
+
 ---
 
 ## 7. Vario Audio Engine & Acoustic Mapping

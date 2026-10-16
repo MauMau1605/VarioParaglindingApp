@@ -484,10 +484,25 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
     // ── Barometer filtering state (zero-allocation fast path) ─────────────────
 
     val kalmanFilter = VarioKalmanFilter()
+    val altitudePipeline = AltitudeFilterPipeline(kalmanFilter)
     private var lastBaroAltM: Float = Float.NaN
     private var lastBaroTimeMs: Long = 0L
     private var smoothedBaroVz: Float = 0f
     private var lastDiagLogTimeMs: Long = 0L
+
+    /**
+     * Reconfigures [AltitudeFilterPipeline] based on current session phase,
+     * sensor modality, filter preset, and activity type.
+     */
+    fun updatePipelineConfiguration() {
+        val mode = if (_dataFlow.value.isUsbConnected) SensorMode.BARO_AND_GPS else SensorMode.GPS_ONLY
+        altitudePipeline.configure(
+            phase = sessionPhase,
+            mode = mode,
+            preset = kalmanFilter.preset,
+            activityType = activityType
+        )
+    }
 
     // ── IMU (Accelerometer & Gyroscope) Experimental Assist ─────────────────
     private var sensorManager: SensorManager? = null

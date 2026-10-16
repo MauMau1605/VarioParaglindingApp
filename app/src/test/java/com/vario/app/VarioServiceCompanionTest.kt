@@ -25,6 +25,35 @@ class VarioServiceCompanionTest {
     }
 
     @Test
+    fun setFilterPreset_updatesDataFlow() {
+        VarioService.setFilterPreset(FilterPreset.SENSITIVE)
+        assertEquals(FilterPreset.SENSITIVE, VarioService.dataFlow.value.filterPreset)
+
+        VarioService.setFilterPreset(FilterPreset.SMOOTH)
+        assertEquals(FilterPreset.SMOOTH, VarioService.dataFlow.value.filterPreset)
+    }
+
+    @Test
+    fun setFlightMode_whenIdle_updatesFlightModeInDataFlow() {
+        VarioService.setFlightMode(FlightMode.HIKE_AND_FLY)
+        assertEquals(FlightMode.HIKE_AND_FLY, VarioService.dataFlow.value.flightMode)
+
+        VarioService.setFlightMode(FlightMode.NORMAL)
+        assertEquals(FlightMode.NORMAL, VarioService.dataFlow.value.flightMode)
+    }
+
+    @Test
+    fun setActivityType_whenIdle_updatesActivityTypeAndFlightModeInDataFlow() {
+        VarioService.setActivityType(ActivityType.HIKING)
+        assertEquals(ActivityType.HIKING, VarioService.dataFlow.value.activityType)
+        assertEquals(FlightMode.HIKE_AND_FLY, VarioService.dataFlow.value.flightMode)
+
+        VarioService.setActivityType(ActivityType.SIMPLE_FLIGHT)
+        assertEquals(ActivityType.SIMPLE_FLIGHT, VarioService.dataFlow.value.activityType)
+        assertEquals(FlightMode.NORMAL, VarioService.dataFlow.value.flightMode)
+    }
+
+    @Test
     fun updateStandbyLocation_updatesCoordinatesAndAltitude() {
         VarioService.setUsbStatus(false, null)
 
