@@ -55,10 +55,12 @@ fun HeaderMenuPanel(
     onToggleMute: () -> Unit,
     isMuted: Boolean,
     isUsbConnected: Boolean,
+    onOpenSettings: () -> Unit = {},
+    onOpenMap: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val animatedHeight by animateDpAsState(
-        targetValue = if (isExpanded) 180.dp else 0.dp,
+        targetValue = if (isExpanded) 240.dp else 0.dp,
         animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
         label = "headerMenuPanelHeight"
     )
@@ -85,11 +87,22 @@ fun HeaderMenuPanel(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Row 1: Statistiques & Logs
+                    // Row 1: Relief & Finesse & Statistiques
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        MenuTileItem(
+                            icon = "⚙️",
+                            label = "Relief & Finesse",
+                            onClick = {
+                                onToggleExpand()
+                                onOpenSettings()
+                            },
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.weight(1f)
+                        )
+
                         MenuTileItem(
                             icon = "📊",
                             label = "Statistiques",
@@ -98,17 +111,6 @@ fun HeaderMenuPanel(
                                 onOpenStats()
                             },
                             tint = Color(0xFFFACC15),
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        MenuTileItem(
-                            icon = "📋",
-                            label = "Logs & Diag",
-                            onClick = {
-                                onToggleExpand()
-                                onOpenDebug()
-                            },
-                            tint = Color(0xFF94A3B8),
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -134,6 +136,34 @@ fun HeaderMenuPanel(
                             label = if (isMuted) "Son coupé" else "Son actif",
                             onClick = onToggleMute,
                             tint = if (isMuted) Color(0xFFF87171) else Color(0xFF4ADE80),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // Row 3: Carte interactive & Logs
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MenuTileItem(
+                            icon = "🗺️",
+                            label = "Carte interactive",
+                            onClick = {
+                                onToggleExpand()
+                                onOpenMap()
+                            },
+                            tint = Color(0xFF4ADE80),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        MenuTileItem(
+                            icon = "📋",
+                            label = "Logs & Diag",
+                            onClick = {
+                                onToggleExpand()
+                                onOpenDebug()
+                            },
+                            tint = Color(0xFF94A3B8),
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -221,6 +251,7 @@ fun CollapsiblePushMenu(
     isMuted: Boolean = false,
     isUsbConnected: Boolean = false,
     onReconnectUsb: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     HeaderMenuPanel(
@@ -232,6 +263,8 @@ fun CollapsiblePushMenu(
         onToggleMute = onToggleMute,
         isMuted = isMuted,
         isUsbConnected = isUsbConnected,
+        onOpenSettings = onOpenSettings,
+        onOpenMap = onOpenMap,
         modifier = modifier
     )
 }

@@ -285,24 +285,38 @@ stateDiagram-v2
 
 ## 8. Navigation, Terrain Elevation & Airspace Subsystems
 
-### 1. Relief Elevation & AGL Provider (`TerrainElevationProvider.kt`)
+### 1. Offline SRTM Elevation Engine (`HgtTerrainManager.kt`)
+- **Direct Memory-Mapped Binary Parsing:** Directly reads standard 1°×1° SRTM binary elevation tiles (`.hgt`), supporting both SRTM-3 (3 arc-seconds, 1201×1201 nodes, ~2.8 MB) and SRTM-1 (1 arc-second, 3601×3601 nodes, ~25 MB).
+- **Zero Dynamic Allocation & Nanosecond Latency:** Tiles are mapped into direct `ShortBuffer` memory (`FileChannel.MapMode.READ_ONLY`), yielding microsecond lookup latency (< 50 ns) with **0 bytes of heap allocation** per query.
+- **Bilinear Spatial Interpolation:** Computes smooth continuous elevation between adjacent 16-bit grid nodes, preventing stepped elevation artifacts along ridge lines.
+- **Offline Pre-Flight Caching & Management:**
+  - Auto-formatting: maps coordinates to standard filenames (e.g. `(45.92, 6.87)` -> `N45E006.hgt`).
+  - Pre-flight Wi-Fi download: fetches compressed `.hgt.zip` from public mirrors (e.g. ArduPilot SRTM mirror) with HTTP redirect resilience, unzips in background, and registers into `/terrain/` storage.
+  - SAF File Importer: allows importing custom LiDAR or HGT terrain tiles from external storage via Android Storage Access Framework.
+  - Storage inspection: returns installed tile inventory with file sizes (`getInstalledTileInfos()`) and enables safe deletion.
+
+### 2. Relief Elevation & AGL Provider (`TerrainElevationProvider.kt`)
 - Calculates pilot clearance Above Ground Level ($\text{AGL} = \text{Altitude MSL} - \text{Terrain Elevation}$).
-- Backed by an in-memory thread-safe LRU cache (8,192 points, quantized to ~110m grid / 0.001°).
-- Automatically fetches digital elevation data asynchronously via the Open-Meteo elevation API (supporting batch requests of up to 100 coordinates), with graceful offline fallback to local regional relief models (`estimateLocalElevation`).
+- **Tiered Lookup Pipeline:**
+  1. *Tier 1 (Instant Offline HGT):* Checks `HgtTerrainManager.getElevation(lat, lon)` first. If an offline tile exists, returns exact elevation in <50 ns with zero network traffic.
+  2. *Tier 2 (In-Memory LRU Cache):* Thread-safe cache (8,192 points, quantized to ~110m grid / 0.001°).
+  3. *Tier 3 (Asynchronous Online Batch API):* Batches uncached points to Open-Meteo elevation API in chunks of up to 100 coordinates.
+  4. *Tier 4 (Local Relief Model):* Immediate smooth fallback using known obstacle peaks and regional valley baseline.
 - **Batch Grid & Summit Queries:**
-  - `getElevationBatch(latitudes, longitudes)`: High-efficiency chunked batch fetcher.
+  - `getElevationBatch(latitudes, longitudes)`: High-efficiency chunked batch fetcher resolving offline HGT points instantly before batching uncached points.
   - `getElevationGrid(centerLat, centerLon, radiusM, gridSize)`: Regular 2D geographic bounding box sampler for reachability heatmaps.
-  - `findPeakElevation(centerLat, centerLon, radiusM = 50f)`: 5×5 circular search grid snapping departure points to the highest local terrain summit within 50 meters.
+  - `findPeakElevation(centerLat, centerLon, radiusM = 50f)`: 5×5 circular search grid snapping departure points to the highest local terrain summit within 50 meters using real terrain models.
 - **Cockpit Telemetry Feed:** `VarioService` listens to elevation updates (`TerrainElevationProvider.addListener`) and maintains a cached ground elevation reference `currentGroundElevationM`. On every location fix and barometric sentence, `VarioService` emits `estimatedAglM` into `VarioData` for instantaneous, zero-allocation display on the primary flight deck.
 
-### 2. Obstacle & Airspace Avoidance (`ObstacleRoutingEngine.kt`)
+### 3. Obstacle & Airspace Avoidance (`ObstacleRoutingEngine.kt`)
 - Maintains geographic definitions of high-risk mountain obstacles (cables, power lines, alpine peaks, restricted airspaces).
 - Implements waypoint navigation algorithms computing direct distance, required glide ratio ($L/D$), and avoidance paths when direct vectors intersect obstacle hazard radii.
 
-### 3. SpotAir-Style Terrain Reachability Heatmap & Glide Cone (`ReachabilityEngine.kt`, `ReachabilityHeatmapOverlay.kt`, `GlideOverlay.kt`)
+### 4. SpotAir-Style Terrain Reachability Heatmap & Glide Cone (`ReachabilityEngine.kt`, `ReachabilityHeatmapOverlay.kt`, `GlideOverlay.kt`)
 - **SpotAir-Style Terrain-Aware Heatmap:**
   - Replaces pure distance circles with a real-time relief-aware reachability raster overlay.
-  - Generates a 64×64 sample grid around the pilot (live flight) or departure point (itinerary planning mode).
+  - Generates a 32×32 sample grid around the pilot (live flight) or departure point (itinerary planning mode).
+  - **Dynamic Delta H Bounding Box:** Computes reachable radius based on local ground clearance $\Delta H = \left(\text{Alt}_{\text{start}} - \text{GroundAlt}_{\text{ref}}\right) \times \text{GlideRatio} \times 1.15$, shrinking calculation area by 10× compared to sea-level valley baselines.
   - Computes exact AGL clearance at every point: $\text{AGL} = \left(\text{Alt}_{\text{start}} - \frac{\text{Distance}}{\text{GlideRatio}}\right) - \text{Elevation}_{\text{terrain}} - \text{Margin}$.
   - **Color Palette (SpotAir-aligned):**
     - $\ge 1200\text{ m AGL}$: Deep Blue (`#801565C0`) — Maximum safety margin
@@ -315,12 +329,12 @@ stateDiagram-v2
     - $0 - 50\text{ m AGL}$: Red (`#55C62828`) — Critical reachability limit
     - $< 0\text{ m}$ (or obstructed): Transparent (`#00000000`)
   - **Line-of-Sight Terrain Collision (Ridge Shadowing):** Implements radial ray casting from the pilot/departure point to each cell; if an intermediate terrain feature intersects the glide slope, terrain located in the shadow behind the ridge is marked unreachable (transparent).
-  - **Zero-Allocation Rendering Loop:** Renders via an osmdroid `Overlay` subclass using a pre-allocated 64×64 ARGB_8888 `Bitmap`, hardware-accelerated bilinear filtering (`isFilterBitmap = true`), and `Matrix.setPolyToPoly` 4-point quadrilateral mapping, ensuring seamless alignment during map pan, zoom, and orientation rotation with zero GC invocation during redraws.
+  - **Zero-Allocation Rendering Loop:** Renders via an osmdroid `Overlay` subclass using a pre-allocated 32×32 ARGB_8888 `Bitmap`, hardware-accelerated bilinear filtering (`isFilterBitmap = true`), and `Matrix.setPolyToPoly` 4-point quadrilateral mapping, ensuring seamless alignment during map pan, zoom, and orientation rotation with zero GC invocation during redraws.
   - **Smart Recompute Throttling:** Background recomputations trigger only when position exceeds 100m, altitude exceeds 30m, or glide ratio changes by >0.2.
 - **Legacy Conical Glide Reach Overlay (`GlideOverlay.kt`):** Maintained as an optional alternative mode displaying concentric circles (25%, 50%, 90%, 100%) with radial gradient fills. Toggleable on-the-fly in the settings bottom sheet (`useHeatmapMode`).
 - **Smart Departure Summit Snapping:** In itinerary planning mode, selecting a departure point automatically evaluates surrounding topography within a 50m radius and sets the reference flight altitude based on the local peak rather than an accidental low-lying gully tap.
 
-### 4. Flight Track & GPX Logger (`GpxTrackManager.kt`)
+### 5. Flight Track & GPX Logger (`GpxTrackManager.kt`)
 - Records 1 Hz timestamped geographic points with barometric altitude and variometer readings.
 - **Mode & Phase Tagging:** Points carry session phase tags (`HIKING` vs `FLYING`) in `<trkpt><extensions><phase>...</phase></extensions>`.
 - **GPX Waypoints (`<wpt>`):** Automatically captures mode transition events as standard GPX waypoints:

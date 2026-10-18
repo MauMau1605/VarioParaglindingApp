@@ -76,24 +76,34 @@ The top header consolidates status information and quick tool access into a unif
 - **GPS Status Indicator:** Indicates GNSS satellite fix quality (`GPS prêt` in green, `Attente` in grey).
 - **Sensor Mode Badge:** Displays active sensor fusion status (`Baro + GPS`, `Scan USB…`, or `GPS seul`).
 - **Flight Timer:** Elapsed flight or session duration formatted in `HH:MM:SS`.
-- **Menu Toggle Button (`≡` / `▲`):** Replaces standalone buttons with a single menu trigger. Tapping it smoothly slides down a dedicated dropdown control panel directly below the header.
+- **Menu Toggle Button (`[≡ Menu]`):** High-contrast button in the top-right corner. Tapping it smoothly slides down a dedicated dropdown control panel directly below the header.
 - **Scrollable Dropdown Panel (`HeaderMenuPanel`):**
-  - Features smooth animated deployment (0 to 180 dp).
-  - Equipped with **vertical scrolling (`verticalScroll`)** ensuring all action tiles remain accessible regardless of screen size or item count:
+  - Features smooth animated deployment (0 to 240 dp).
+  - Equipped with **vertical scrolling (`verticalScroll`)** ensuring all action tiles remain accessible regardless of screen size:
+    - **⚙️ Relief & Finesse :** Accès direct aux paramètres de finesse de voile, à la carte thermique SpotAir et au gestionnaire de relief hors-ligne SRTM (.HGT).
     - **📊 Statistiques :** Accès direct à l'historique multi-sports, synthèses kilométriques et gestion des traces GPX.
-    - **📋 Logs & Diag :** Terminal de diagnostic LK8EX1, flux NMEA brut, console système et tests audio.
     - **🔌 Reconnecter USB :** Bouton d'action et indicateur visuel de connexion du module capteur (état vert si connecté).
     - **🔇 / 🔊 Son Vario :** Bascule instantanée du silencieux acoustique avec retour d'état en direct.
+    - **🗺️ Carte interactive :** Bascule immédiate vers la navigation cartographique plein écran.
+    - **📋 Logs & Diag :** Terminal de diagnostic LK8EX1, flux NMEA brut, console système et tests audio.
 - **Full-Width Central Cockpit:** Removing the middle-screen sidebar allows the central flight instruments (digital $V_z$ or mountain $D^+/D^-$ meters) to expand across the full screen width for optimal glanceability in high sunlight.
 
 ### Tactical Navigation & Flight Controls
 - **Tactical Map Switch (`🗺 Carte`):** Prominent button positioned at the bottom of the cockpit alongside the flight start/stop trigger for direct full-screen map access.
 
+### Accessing Settings Everywhere (Où trouver les Paramètres)
+Les paramètres de finesse, d'ombrage et de relief hors-ligne sont accessibles instantanément depuis n'importe quel écran :
+1. **Depuis l'écran VARIO (Cockpit principal) :** Touchez le bouton `[≡ Menu]` en haut à droite, puis sélectionnez la tuile **⚙️ Relief & Finesse**.
+2. **Depuis l'écran CARTE (Navigation) :**
+   - Touchez le bouton **`⚙ Param.`** dans la barre HUD supérieure.
+   - Touchez le badge de finesse **`🪂 Fin. 8.5 ✎`** en haut à gauche.
+   - Touchez le bouton flottant **`⚙`** dans la colonne de commandes à droite de la carte.
+
 ### Instrument Cards
 - **Digital Vertical Speed ($V_z$):** Large, high-contrast readout in meters per second (m/s). Positive values indicate lift; negative values indicate sink.
 - **Climb / Sink Ladder Gauge:** Dynamic visual scale ($ -5.0\text{ m/s}$ to $+5.0\text{ m/s}$). In thermals, a vibrant green column rises above zero; in sinking air, an amber/red column drops below zero.
 - **Barometric Altitude (MSL):** High-precision altitude above mean sea level (MSL) calibrated automatically using the takeoff reference. In non-flight ground activities (hiking, ski touring, running) and during the hike ascent phase, displays as a clean single altitude readout without ground clearance.
-- **Estimated Ground Clearance (AGL):** Real-time estimated clearance above ground level in cyan (`~620 m Sol (AGL)`), computed dynamically via `TerrainElevationProvider` comparing barometric altitude against local/Open-Meteo elevation models. Active exclusively in flight mode (`Vol Solo` or once transitioning to flight in `Hike & Fly`). When waiting for a GPS fix, displays `--- m Sol (GPS req.)`.
+- **Estimated Ground Clearance (AGL):** Real-time estimated clearance above ground level in cyan (`~620 m Sol (AGL)`), computed dynamically via `TerrainElevationProvider` and local SRTM HGT data comparing barometric altitude against ground relief. Active exclusively in flight mode (`Vol Solo` or once transitioning to flight in `Hike & Fly`). When waiting for a GPS fix, displays `--- m Sol (GPS req.)`.
 - **Plafond Atteint (Peak Ceiling):** Highest altitude achieved during the current flight session.
 - **Distance au Déco (Takeoff Distance):** Straight-line horizontal distance between the takeoff launch coordinates and current position.
 
@@ -153,11 +163,19 @@ Switch to the **CARTE (MAP)** tab to view real-time situational navigation:
   $$\text{AGL} = \text{Altitude MSL} - \text{Terrain Elevation}$$
 - Digital Elevation data is cached locally so AGL readouts function reliably even when outside cellular coverage.
 
-### 4. Zone d'accessibilité : Carte thermique SpotAir & Cône de plané
-VarioAppli propose deux modes de visualisation pour évaluer en direct les zones de vol atteignables en plané pur (sans ascendance), configurables via le bouton `📐` et la feuille de paramètres :
+### 4. Zone d'accessibilité : Carte thermique SpotAir & Relief 100% Hors-ligne (SRTM .HGT)
+VarioAppli propose deux modes de visualisation pour évaluer en direct les zones de vol atteignables en plané pur (sans ascendance), configurables via le bouton `📐`, le bouton `⚙ Param.` ou depuis le menu cockpit `[≡ Menu]` :
 
 - **🗺️ Carte thermique terrain (Style SpotAir - Recommandé) :**
-  - Calcule en temps réel la hauteur exacte au-dessus du sol (AGL) pour chaque point de la carte en intégrant le Modèle Numérique de Terrain (MNT Open-Meteo).
+  - Calcule en temps réel la hauteur exacte au-dessus du sol (AGL) pour chaque point de la carte en projetant la finesse de votre aile sur la topographie 3D.
+  - **Fonctionnement 100% Hors-ligne (Dalles SRTM .HGT) :**
+    - Pour voler sans aucune connexion internet et avec un temps de réponse instantané (< 1 ms), téléchargez en avance (en Wi-Fi avant de partir) les dalles de relief SRTM 1°×1° (~1.5 Mo par dalle).
+    - Ouvrez les paramètres (`⚙ Param.` ou `[≡ Menu] -> ⚙️ Relief & Finesse`), puis touchez **"Télécharger la zone actuelle (ex: N45E006)"**.
+    - Des raccourcis en 1 clic permettent également d'installer les massifs majeurs : *Annecy / Chamonix (N45E006)*, *Grenoble / Vercors (N45E005)*, *Alpes du Sud / St-André (N44E006)*, *Pyrénées (N42E000)*, *Vosges / Jura (N47E006)*.
+    - Possibilité d'importer vos propres fichiers `.HGT` via le bouton **"Importer un fichier .HGT local"**.
+    - La liste des dalles installées avec leur taille est affichée, avec option de suppression pour libérer de l'espace.
+    - *Secours en ligne :* Si aucune dalle locale n'est installée, l'application utilise l'API MNT Open-Meteo si le téléphone est connecté au réseau cellulaire.
+  - **Rayon de calcul réaliste ($\Delta H$ au sol) :** Le rayon de la carte thermique s'adapte à la hauteur réelle par rapport au sol du décollage / pilote ($\Delta H = \text{Alt}_{\text{vol}} - \text{Alt}_{\text{sol}}$), évitant les portées disproportionnées calculées par rapport au niveau de la mer.
   - **Ombrage des crêtes (Line-of-Sight) :** Si une montagne ou une crête intermédiaire coupe la pente de descente de l'aile, toute la zone située derrière dans l'ombre du relief est automatiquement masquée (transparente car inaccessible).
   - **Code couleur progressif SpotAir :**
     - **Bleu foncé ($\ge 1200\text{ m}$ AGL) & Bleu ($800 - 1200\text{ m}$) :** Marge de sécurité maximale, très haute clairance.

@@ -33,7 +33,7 @@ import kotlin.math.sqrt
  * - Updates are throttled using dirty-state thresholds (>100m translation, >30m altitude, >0.2 glide ratio).
  */
 class ReachabilityHeatmapOverlay(
-    private val gridSize: Int = 64
+    private val gridSize: Int = 32
 ) : Overlay() {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -96,6 +96,7 @@ class ReachabilityHeatmapOverlay(
         gr: Float,
         safetyMargin: Float = 50f,
         enabled: Boolean,
+        groundAltM: Float? = null,
         mapView: MapView? = null
     ) {
         currentPosition = position
@@ -111,14 +112,15 @@ class ReachabilityHeatmapOverlay(
             return
         }
 
-        checkAndTriggerRecompute(position, altM, gr, safetyMargin)
+        checkAndTriggerRecompute(position, altM, gr, safetyMargin, groundAltM)
     }
 
     private fun checkAndTriggerRecompute(
         pos: GeoPoint,
         altM: Float,
         gr: Float,
-        marginM: Float
+        marginM: Float,
+        groundAltM: Float?
     ) {
         val distMoved = distanceM(pos.latitude, pos.longitude, lastCalculatedLat, lastCalculatedLon)
         val altDiff = abs(altM - lastCalculatedAlt)
@@ -127,7 +129,7 @@ class ReachabilityHeatmapOverlay(
         val isDirty = !hasBitmap || distMoved > 100f || altDiff > 30f || grDiff > 0.2f
 
         if (isDirty && !isComputing) {
-            recomputeAsync(pos.latitude, pos.longitude, altM, gr, marginM)
+            recomputeAsync(pos.latitude, pos.longitude, altM, gr, marginM, groundAltM)
         }
     }
 
@@ -136,17 +138,19 @@ class ReachabilityHeatmapOverlay(
         centerLon: Double,
         altM: Float,
         gr: Float,
-        marginM: Float
+        marginM: Float,
+        groundAltM: Float?
     ) {
         computationJob?.cancel()
         computationJob = scope.launch {
             isComputing = true
             try {
-                // Compute reachable radius based on altitude and glide ratio
-                val deltaH = (altM - TerrainElevationProvider.DEFAULT_VALLEY_BASELINE_M).coerceAtLeast(100f)
-                val radiusM = (deltaH * gr).coerceIn(1500f, 35000f)
+                // Compute reachable radius based on altitude above ground clearance and glide ratio
+                val groundRef = groundAltM ?: TerrainElevationProvider.getElevation(centerLat, centerLon)
+                val deltaH = (altM - groundRef).coerceAtLeast(50f)
+                val radiusM = (deltaH * gr * 1.15f).coerceIn(1200f, 25000f)
 
-                // Fetch elevation grid (uses cache when available)
+                // Fetch elevation grid (uses offline HGT when available)
                 val grid = TerrainElevationProvider.getElevationGrid(
                     centerLat = centerLat,
                     centerLon = centerLon,

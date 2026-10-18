@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -718,6 +720,7 @@ fun MapScreen(
                             gr = glideSettings.glideRatio,
                             safetyMargin = glideSettings.safetyMarginM,
                             enabled = showHeatmap,
+                            groundAltM = groundRefAlt,
                             mapView = mapView
                         )
 
@@ -808,6 +811,7 @@ fun MapScreen(
                             gr = glideSettings.glideRatio,
                             safetyMargin = glideSettings.safetyMarginM,
                             enabled = showHeatmap,
+                            groundAltM = groundRefAlt,
                             mapView = mapView
                         )
                     } else {
@@ -1178,6 +1182,12 @@ fun MapScreen(
                     mapViewRef?.invalidate()
                 }
             )
+
+            // Open Relief & Glide Settings
+            FloatingCircleButton(
+                iconText = "⚙",
+                onClick = { showSettingsSheet = true }
+            )
         }
 
         // ── GPX Track Profile & Finger Scrubber Card ────────────────────────
@@ -1222,7 +1232,9 @@ fun MapScreen(
                     activeBasemap = newProvider
                     BasemapRegistry.setActiveProvider(context, newProvider.id)
                     mapViewRef?.setTileSource(newProvider.createTileSource())
-                }
+                },
+                currentLat = if (varioData.latitude != 0.0) varioData.latitude else 45.92,
+                currentLon = if (varioData.longitude != 0.0) varioData.longitude else 6.87
             )
         }
 
@@ -1377,12 +1389,28 @@ private fun MapTopHudBar(
             }
 
             // Right icons: GPX Tracks & Settings
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 IconButton(onClick = onOpenTracks) {
                     Text("📁", fontSize = 16.sp)
                 }
-                IconButton(onClick = onOpenSettings) {
-                    Text("⚙", fontSize = 16.sp)
+
+                Surface(
+                    onClick = onOpenSettings,
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF1E293B),
+                    border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.7f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("⚙", fontSize = 13.sp, color = Color(0xFF38BDF8))
+                        Text("Param.", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                    }
                 }
             }
         }
@@ -2083,13 +2111,51 @@ fun GlideSettingsBottomSheet(
     activeBasemap: BasemapProvider? = null,
     onDismiss: () -> Unit,
     onUpdateSettings: (GlideSettings) -> Unit,
-    onSelectBasemap: ((BasemapProvider) -> Unit)? = null
+    onSelectBasemap: ((BasemapProvider) -> Unit)? = null,
+    currentLat: Double = 45.92,
+    currentLon: Double = 6.87
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var glideRatio by remember { mutableFloatStateOf(currentSettings.glideRatio) }
     var glideEnabled by remember { mutableStateOf(currentSettings.isGlideAreaEnabled) }
     var useHeatmap by remember { mutableStateOf(currentSettings.useHeatmapMode) }
     val availableBasemaps = remember { BasemapRegistry.getAvailableProviders() }
+
+    // Offline SRTM Terrain state
+    val currentTileName = remember(currentLat, currentLon) {
+        HgtTerrainManager.getTileFilename(currentLat, currentLon)
+    }
+    var installedTiles by remember { mutableStateOf(HgtTerrainManager.getInstalledTileInfos()) }
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadTileTarget by remember { mutableStateOf<String?>(null) }
+    var downloadProgress by remember { mutableFloatStateOf(0f) }
+    var downloadStatusMsg by remember { mutableStateOf<String?>(null) }
+
+    val hgtFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val fileName = getFileNameFromUri(context, uri) ?: "imported.hgt"
+            scope.launch {
+                try {
+                    val stream = context.contentResolver.openInputStream(uri)
+                    if (stream != null) {
+                        val ok = HgtTerrainManager.importHgtFile(stream, fileName)
+                        if (ok) {
+                            installedTiles = HgtTerrainManager.getInstalledTileInfos()
+                            Toast.makeText(context, "Dalle $fileName importée avec succès !", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Fichier invalide. Nom attendu: ex: N45E005.hgt", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Erreur d'import : ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -2099,6 +2165,7 @@ fun GlideSettingsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(22.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -2389,6 +2456,288 @@ fun GlideSettingsBottomSheet(
                 }
             }
 
+            // ── Section: Offline SRTM Terrain Relief ─────────────────────────
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                border = CardDefaults.outlinedCardBorder().copy(
+                    brush = androidx.compose.ui.graphics.SolidColor(Color(0xFF334155))
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "⛰️ Relief Terrain Hors-ligne (SRTM)",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "Téléchargez en avance (Wi-Fi) pour un calcul 100% hors-ligne, ultra-rapide (<1 ms) et sans connexion en vol.",
+                                fontSize = 12.sp,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                    }
+
+                    // Zone status badge
+                    val isTileInstalled = installedTiles.any { it.filename.equals(currentTileName, ignoreCase = true) }
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isTileInstalled) Color(0xFF14532D) else Color(0xFF78350F),
+                        border = BorderStroke(1.dp, if (isTileInstalled) Color(0xFF4ADE80) else Color(0xFFF59E0B)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isTileInstalled) "✓ Dalle de la zone installée : $currentTileName" else "⚠️ Dalle de la zone non installée : $currentTileName",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isTileInstalled) Color(0xFF86EFAC) else Color(0xFFFDE68A)
+                                )
+                                Text(
+                                    text = if (isTileInstalled) "Calcul de relief 100% hors-ligne actif (ultra-rapide)" else "Recommandé : téléchargez la dalle pour voler sans internet",
+                                    fontSize = 11.sp,
+                                    color = if (isTileInstalled) Color(0xFFBBF7D0) else Color(0xFFFCD34D)
+                                )
+                            }
+                        }
+                    }
+
+                    // Single-tap download button for current tile
+                    Button(
+                        onClick = {
+                            if (!isDownloading) {
+                                isDownloading = true
+                                downloadTileTarget = currentTileName
+                                downloadProgress = 0f
+                                downloadStatusMsg = "Téléchargement de $currentTileName..."
+                                scope.launch {
+                                    val res = HgtTerrainManager.downloadTile(currentLat, currentLon) { p ->
+                                        downloadProgress = p
+                                    }
+                                    isDownloading = false
+                                    downloadTileTarget = null
+                                    if (res.isSuccess) {
+                                        installedTiles = HgtTerrainManager.getInstalledTileInfos()
+                                        downloadStatusMsg = "✓ Dalle $currentTileName prête !"
+                                        Toast.makeText(context, "Dalle $currentTileName installée !", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val err = res.exceptionOrNull()?.message ?: "Erreur réseau"
+                                        downloadStatusMsg = "❌ Échec : $err"
+                                        Toast.makeText(context, "Erreur téléchargement : $err", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !isDownloading,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isTileInstalled) Color(0xFF334155) else Color(0xFF0284C7)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(if (isTileInstalled) "🔄" else "📥", fontSize = 16.sp)
+                            Text(
+                                text = if (isDownloading && downloadTileTarget == currentTileName) "Téléchargement en cours..." else if (isTileInstalled) "Mettre à jour la dalle $currentTileName (~1.5 Mo)" else "Télécharger la zone actuelle $currentTileName (~1.5 Mo)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    // Download progress indicator
+                    if (isDownloading) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { downloadProgress },
+                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                color = Color(0xFF38BDF8),
+                                trackColor = Color(0xFF334155)
+                            )
+                            Text(
+                                text = "Progression : ${(downloadProgress * 100).toInt()}%",
+                                fontSize = 11.sp,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                    } else if (downloadStatusMsg != null) {
+                        Text(
+                            text = downloadStatusMsg!!,
+                            fontSize = 11.sp,
+                            color = Color(0xFFCBD5E1)
+                        )
+                    }
+
+                    // Preset buttons for major flying spots
+                    Text(
+                        text = "Zones populaires de vol libre :",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFCBD5E1)
+                    )
+
+                    val popularZones = listOf(
+                        Triple("🏔️ Annecy / Chamonix", 45.9, 6.8), // N45E006
+                        Triple("⛰️ Dauphiné / Vercors", 45.1, 5.7), // N45E005
+                        Triple("☀️ Alpes Sud (St-André)", 44.1, 6.5), // N44E006
+                        Triple("🦅 Pyrénées", 42.8, 0.5), // N42E000
+                        Triple("🌲 Vosges / Jura", 47.0, 6.5) // N47E006
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        popularZones.forEach { (name, lat, lon) ->
+                            val tile = HgtTerrainManager.getTileFilename(lat, lon)
+                            val isDownloaded = installedTiles.any { it.filename.equals(tile, ignoreCase = true) }
+
+                            Surface(
+                                onClick = {
+                                    if (!isDownloading) {
+                                        isDownloading = true
+                                        downloadTileTarget = tile
+                                        downloadProgress = 0f
+                                        downloadStatusMsg = "Téléchargement de $tile ($name)..."
+                                        scope.launch {
+                                            val res = HgtTerrainManager.downloadTile(lat, lon) { p ->
+                                                downloadProgress = p
+                                            }
+                                            isDownloading = false
+                                            downloadTileTarget = null
+                                            if (res.isSuccess) {
+                                                installedTiles = HgtTerrainManager.getInstalledTileInfos()
+                                                downloadStatusMsg = "✓ Dalle $tile ($name) prête !"
+                                                Toast.makeText(context, "$name installé !", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                val err = res.exceptionOrNull()?.message ?: "Erreur réseau"
+                                                downloadStatusMsg = "❌ Échec : $err"
+                                            }
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isDownloaded) Color(0xFF14532D) else Color(0xFF131B2E),
+                                border = BorderStroke(1.dp, if (isDownloaded) Color(0xFF4ADE80) else Color(0xFF334155))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = name,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isDownloaded) Color(0xFF86EFAC) else Color.White
+                                    )
+                                    Text(
+                                        text = if (isDownloaded) "✓" else "📥",
+                                        fontSize = 11.sp,
+                                        color = if (isDownloaded) Color(0xFF4ADE80) else Color(0xFF38BDF8)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Import local HGT file
+                    Button(
+                        onClick = {
+                            hgtFilePickerLauncher.launch(arrayOf("*/*"))
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                        border = BorderStroke(1.dp, Color(0xFF475569)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("📂", fontSize = 15.sp)
+                            Text(
+                                text = "Importer un fichier .HGT local",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFFCBD5E1)
+                            )
+                        }
+                    }
+
+                    // List of installed tiles
+                    if (installedTiles.isNotEmpty()) {
+                        Text(
+                            text = "Dalles installées (${installedTiles.size}) :",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFFCBD5E1)
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            installedTiles.forEach { tileInfo ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF0F172A), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text("⛰️", fontSize = 12.sp)
+                                        Text(
+                                            text = tileInfo.filename,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = "(${tileInfo.formattedSize})",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            HgtTerrainManager.deleteTile(tileInfo.filename)
+                                            installedTiles = HgtTerrainManager.getInstalledTileInfos()
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Text("🗑️", fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── Section: Basemap Selection (if provided) ─────────────────────
             if (activeBasemap != null && onSelectBasemap != null) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2446,6 +2795,18 @@ fun GlideSettingsBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
         }
     }
+}
+
+private fun getFileNameFromUri(context: Context, uri: Uri): String? {
+    if (uri.scheme == "content") {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex != -1 && cursor.moveToFirst()) {
+                return cursor.getString(nameIndex)
+            }
+        }
+    }
+    return uri.lastPathSegment?.substringAfterLast('/')
 }
 
 @Composable

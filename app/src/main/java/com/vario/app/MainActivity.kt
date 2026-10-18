@@ -154,6 +154,7 @@ class MainActivity : ComponentActivity() {
                 getSharedPreferences("osmdroid", Context.MODE_PRIVATE)
             )
             org.osmdroid.config.Configuration.getInstance().userAgentValue = packageName
+            HgtTerrainManager.init(applicationContext)
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed initializing osmdroid configuration", e)
         }
@@ -410,6 +411,7 @@ private fun VarioScreen(
     val coroutineScope = rememberCoroutineScope()
     var isVerticalBarExpanded by remember { mutableStateOf(false) }
     var showDebugModal by remember { mutableStateOf(false) }
+    var showGlideSettingsSheet by remember { mutableStateOf(false) }
     var showHikeTransitionDialog by remember { mutableStateOf(false) }
     var showSaveConfirmDialog by remember { mutableStateOf(false) }
     var isStravaUploading by remember { mutableStateOf(false) }
@@ -494,7 +496,9 @@ private fun VarioScreen(
                 onReconnectUsb = onReconnectUsb,
                 onToggleMute = onToggleMute,
                 isMuted = varioData.isMuted,
-                isUsbConnected = varioData.isUsbConnected
+                isUsbConnected = varioData.isUsbConnected,
+                onOpenSettings = { showGlideSettingsSheet = true },
+                onOpenMap = onOpenMap
             )
 
             // ── Activity Type Selector or Active Session Banner ─────────
@@ -1510,6 +1514,19 @@ private fun VarioScreen(
                 onToggleImuAssist = { VarioService.setImuAssist(it) }
             )
         }
+
+        // ── Glide & Relief Settings Bottom Sheet ─────────────────────────
+        if (showGlideSettingsSheet) {
+            GlideSettingsBottomSheet(
+                currentSettings = GlideSettingsManager.getSettings(context),
+                onDismiss = { showGlideSettingsSheet = false },
+                onUpdateSettings = { newSettings ->
+                    GlideSettingsManager.saveSettings(context, newSettings)
+                },
+                currentLat = if (varioData.latitude != 0.0) varioData.latitude else 45.92,
+                currentLon = if (varioData.longitude != 0.0) varioData.longitude else 6.87
+            )
+        }
     }
 }
 
@@ -1567,23 +1584,30 @@ private fun HeaderBar(
                 color = if (flightDurationSec > 0) Color(0xFFCBD5E1) else Color(0xFF8B9CB0)
             )
 
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .background(
-                        if (isMenuExpanded) Color(0xFF0284C7) else Color(0xFF131926),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                    .border(1.dp, if (isMenuExpanded) Color(0xFF38BDF8) else Color(0xFF1E2A3A), shape = RoundedCornerShape(10.dp))
-                    .clickable { onToggleMenu() },
-                contentAlignment = Alignment.Center
+            Surface(
+                onClick = onToggleMenu,
+                shape = RoundedCornerShape(10.dp),
+                color = if (isMenuExpanded) Color(0xFF0284C7) else Color(0xFF1E293B),
+                border = BorderStroke(1.dp, if (isMenuExpanded) Color(0xFF38BDF8) else Color(0xFF334155))
             ) {
-                Text(
-                    text = if (isMenuExpanded) "▲" else "≡",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isMenuExpanded) Color.White else Color(0xFF94A3B8)
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text(
+                        text = if (isMenuExpanded) "▲" else "≡",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isMenuExpanded) Color.White else Color(0xFF38BDF8)
+                    )
+                    Text(
+                        text = "Menu",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isMenuExpanded) Color.White else Color(0xFFE2E8F0)
+                    )
+                }
             }
         }
     }

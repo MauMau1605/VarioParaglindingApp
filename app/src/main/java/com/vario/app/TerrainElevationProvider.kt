@@ -156,10 +156,17 @@ object TerrainElevationProvider {
 
     /**
      * Returns ground elevation in meters at [lat], [lon].
+     * Checks local offline HGT terrain tiles first (instant, <50 ns).
      * If cached, returns immediately.
      * Otherwise returns immediate local relief estimation and triggers an asynchronous fetch.
      */
     fun getElevation(lat: Double, lon: Double): Float {
+        // Priority 1: High-precision offline SRTM/HGT tile (zero network, instant)
+        val hgtElev = HgtTerrainManager.getElevation(lat, lon)
+        if (hgtElev != null) {
+            return hgtElev
+        }
+
         val key = Pair(quantizeCoord(lat), quantizeCoord(lon))
         val cached = elevationCache[key]
         if (cached != null) {
@@ -185,8 +192,8 @@ object TerrainElevationProvider {
 
     /**
      * Batch-fetches elevations for [latitudes] and [longitudes].
-     * Checks in-memory cache first, batches uncached queries to Open-Meteo in chunks of up to 100 coordinates,
-     * and falls back to local terrain relief estimation for any failed lookups.
+     * Prioritizes local offline HGT tiles, then in-memory cache, then batches uncached queries
+     * to Open-Meteo in chunks of up to 100 coordinates, and falls back to local terrain relief estimation.
      */
     suspend fun getElevationBatch(
         latitudes: DoubleArray,
@@ -198,7 +205,20 @@ object TerrainElevationProvider {
         val missingIndices = mutableListOf<Int>()
 
         for (i in 0 until size) {
-            val key = Pair(quantizeCoord(latitudes[i]), quantizeCoord(longitudes[i]))
+            val lat = latitudes[i]
+            val lon = longitudes[i]
+
+            // 1. Check offline HGT file
+            val hgtElev = HgtTerrainManager.getElevation(lat, lon)
+            if (hgtElev != null) {
+                result[i] = hgtElev
+                val key = Pair(quantizeCoord(lat), quantizeCoord(lon))
+                elevationCache[key] = hgtElev
+                continue
+            }
+
+            // 2. Check memory cache
+            val key = Pair(quantizeCoord(lat), quantizeCoord(lon))
             val cached = elevationCache[key]
             if (cached != null) {
                 result[i] = cached
