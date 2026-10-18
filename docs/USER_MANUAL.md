@@ -153,16 +153,29 @@ Switch to the **CARTE (MAP)** tab to view real-time situational navigation:
   $$\text{AGL} = \text{Altitude MSL} - \text{Terrain Elevation}$$
 - Digital Elevation data is cached locally so AGL readouts function reliably even when outside cellular coverage.
 
-### 4. Conical Glide Reach (Glide Cone Overlay)
-- A dynamic polygon on the map depicts your reachable landing zone based on your current AGL and estimated glide ratio ($L/D$).
-- If a designated landing zone or field lies within the cone, you can reach it safely without needing additional lift.
+### 4. Zone d'accessibilité : Carte thermique SpotAir & Cône de plané
+VarioAppli propose deux modes de visualisation pour évaluer en direct les zones de vol atteignables en plané pur (sans ascendance), configurables via le bouton `📐` et la feuille de paramètres :
 
-### 5. Flight Itinerary Planning
-- Long-press on the map to define:
-  - **Takeoff Point (Déco)**
-  - **Turnpoints / Waypoints**
-  - **Landing Zone (Atterrissage)**
-- The route engine automatically computes the required glide ratio, leg distances, and warns against terrain obstacles or power lines along the trajectory.
+- **🗺️ Carte thermique terrain (Style SpotAir - Recommandé) :**
+  - Calcule en temps réel la hauteur exacte au-dessus du sol (AGL) pour chaque point de la carte en intégrant le Modèle Numérique de Terrain (MNT Open-Meteo).
+  - **Ombrage des crêtes (Line-of-Sight) :** Si une montagne ou une crête intermédiaire coupe la pente de descente de l'aile, toute la zone située derrière dans l'ombre du relief est automatiquement masquée (transparente car inaccessible).
+  - **Code couleur progressif SpotAir :**
+    - **Bleu foncé ($\ge 1200\text{ m}$ AGL) & Bleu ($800 - 1200\text{ m}$) :** Marge de sécurité maximale, très haute clairance.
+    - **Cyan ($500 - 800\text{ m}$ AGL) & Vert ($300 - 500\text{ m}$) :** Marge confortable et sécurisante.
+    - **Jaune ($80 - 150\text{ m}$ AGL) :** Prudence, hauteur sol réduite.
+    - **Orange & Rouge ($< 80\text{ m}$ AGL) :** Limite critique d'atteignabilité (contact sol imminent).
+    - **Transparent :** Inaccessible (relief trop haut ou masqué par un obstacle).
+- **⭕ Cercle simple (Legacy) :**
+  - Affiche un cône radial classique à anneaux concentriques (25% Finesse/4, 50%, 90% et 100% limite).
+
+### 5. Planification d'itinéraires & Calage intelligent du décollage (Rayon 50m)
+- En mode **PLANIFICATION ITINÉRAIRE**, définissez votre vol :
+  - **Point de Départ (Décollage) :** Touchez la carte sur la zone de décollage prévue.
+    - **Calage automatique au sommet (50 m) :** L'application sonde le relief dans un rayon de 50 mètres autour du point touché et cale la référence de vol sur le **point le plus haut (crête / sommet)**. Cela évite de sous-estimer l'altitude de départ si le toucher a atterri dans une dépression ou un ravin. Un message à l'écran confirme l'altitude du sommet retenue.
+  - **Étapes intermédiaires (Waypoints) :** Touchez pour ajouter une ou plusieurs balises de contournement.
+  - **Point d'Arrivée (Atterrissage) :** Touchez la zone d'atterrissage ciblée.
+  - **Inversion de parcours :** Le bouton d'inversion permute départ et arrivée et recalcule immédiatement l'altitude de départ sur le sommet de la nouvelle zone de décollage.
+- Le moteur de navigation affiche la distance de chaque branche, la finesse requise et vérifie le dégagement vertical face aux câbles et lignes électriques.
 
 ---
 

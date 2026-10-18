@@ -20,7 +20,8 @@ import kotlin.math.hypot
 data class GlideSettings(
     val glideRatio: Float = 8.5f,
     val isGlideAreaEnabled: Boolean = true,
-    val safetyMarginM: Float = 50f
+    val safetyMarginM: Float = 50f,
+    val useHeatmapMode: Boolean = true
 )
 
 /**
@@ -31,13 +32,15 @@ object GlideSettingsManager {
     private const val KEY_GLIDE_RATIO = "glide_ratio"
     private const val KEY_GLIDE_ENABLED = "glide_area_enabled"
     private const val KEY_SAFETY_MARGIN = "safety_margin_m"
+    private const val KEY_USE_HEATMAP = "use_heatmap_mode"
 
     fun getSettings(context: Context): GlideSettings {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return GlideSettings(
             glideRatio = prefs.getFloat(KEY_GLIDE_RATIO, 8.5f),
             isGlideAreaEnabled = prefs.getBoolean(KEY_GLIDE_ENABLED, true),
-            safetyMarginM = prefs.getFloat(KEY_SAFETY_MARGIN, 50f)
+            safetyMarginM = prefs.getFloat(KEY_SAFETY_MARGIN, 50f),
+            useHeatmapMode = prefs.getBoolean(KEY_USE_HEATMAP, true)
         )
     }
 
@@ -47,6 +50,7 @@ object GlideSettingsManager {
             .putFloat(KEY_GLIDE_RATIO, settings.glideRatio)
             .putBoolean(KEY_GLIDE_ENABLED, settings.isGlideAreaEnabled)
             .putFloat(KEY_SAFETY_MARGIN, settings.safetyMarginM)
+            .putBoolean(KEY_USE_HEATMAP, settings.useHeatmapMode)
             .apply()
     }
 }

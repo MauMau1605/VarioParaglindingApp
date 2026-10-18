@@ -287,17 +287,38 @@ stateDiagram-v2
 
 ### 1. Relief Elevation & AGL Provider (`TerrainElevationProvider.kt`)
 - Calculates pilot clearance Above Ground Level ($\text{AGL} = \text{Altitude MSL} - \text{Terrain Elevation}$).
-- Backed by an in-memory thread-safe LRU cache (512 tiles, quantized to ~110m grid).
-- Automatically fetches digital elevation data asynchronously via the Open-Meteo elevation API, with graceful offline fallback to local regional relief models.
+- Backed by an in-memory thread-safe LRU cache (8,192 points, quantized to ~110m grid / 0.001°).
+- Automatically fetches digital elevation data asynchronously via the Open-Meteo elevation API (supporting batch requests of up to 100 coordinates), with graceful offline fallback to local regional relief models (`estimateLocalElevation`).
+- **Batch Grid & Summit Queries:**
+  - `getElevationBatch(latitudes, longitudes)`: High-efficiency chunked batch fetcher.
+  - `getElevationGrid(centerLat, centerLon, radiusM, gridSize)`: Regular 2D geographic bounding box sampler for reachability heatmaps.
+  - `findPeakElevation(centerLat, centerLon, radiusM = 50f)`: 5×5 circular search grid snapping departure points to the highest local terrain summit within 50 meters.
 - **Cockpit Telemetry Feed:** `VarioService` listens to elevation updates (`TerrainElevationProvider.addListener`) and maintains a cached ground elevation reference `currentGroundElevationM`. On every location fix and barometric sentence, `VarioService` emits `estimatedAglM` into `VarioData` for instantaneous, zero-allocation display on the primary flight deck.
 
 ### 2. Obstacle & Airspace Avoidance (`ObstacleRoutingEngine.kt`)
 - Maintains geographic definitions of high-risk mountain obstacles (cables, power lines, alpine peaks, restricted airspaces).
 - Implements waypoint navigation algorithms computing direct distance, required glide ratio ($L/D$), and avoidance paths when direct vectors intersect obstacle hazard radii.
 
-### 3. Conical Glide Reach Overlay (`GlideOverlay.kt`)
-- Visualizes the pilot's realistic glide footprint on the map as a colored polygon.
-- Incorporates paraglider polar estimates, current AGL altitude, and safety margins to indicate reachable landing zones.
+### 3. SpotAir-Style Terrain Reachability Heatmap & Glide Cone (`ReachabilityEngine.kt`, `ReachabilityHeatmapOverlay.kt`, `GlideOverlay.kt`)
+- **SpotAir-Style Terrain-Aware Heatmap:**
+  - Replaces pure distance circles with a real-time relief-aware reachability raster overlay.
+  - Generates a 64×64 sample grid around the pilot (live flight) or departure point (itinerary planning mode).
+  - Computes exact AGL clearance at every point: $\text{AGL} = \left(\text{Alt}_{\text{start}} - \frac{\text{Distance}}{\text{GlideRatio}}\right) - \text{Elevation}_{\text{terrain}} - \text{Margin}$.
+  - **Color Palette (SpotAir-aligned):**
+    - $\ge 1200\text{ m AGL}$: Deep Blue (`#801565C0`) — Maximum safety margin
+    - $800 - 1200\text{ m AGL}$: Blue (`#801E88E5`)
+    - $500 - 800\text{ m AGL}$: Cyan / Teal (`#7800ACC1`)
+    - $300 - 500\text{ m AGL}$: Green (`#7043A047`) — Comfortable glide margin
+    - $150 - 300\text{ m AGL}$: Yellow-Green (`#689E9D24`)
+    - $80 - 150\text{ m AGL}$: Yellow (`#60F9A825`) — Caution zone
+    - $50 - 80\text{ m AGL}$: Orange (`#58EF6C00`)
+    - $0 - 50\text{ m AGL}$: Red (`#55C62828`) — Critical reachability limit
+    - $< 0\text{ m}$ (or obstructed): Transparent (`#00000000`)
+  - **Line-of-Sight Terrain Collision (Ridge Shadowing):** Implements radial ray casting from the pilot/departure point to each cell; if an intermediate terrain feature intersects the glide slope, terrain located in the shadow behind the ridge is marked unreachable (transparent).
+  - **Zero-Allocation Rendering Loop:** Renders via an osmdroid `Overlay` subclass using a pre-allocated 64×64 ARGB_8888 `Bitmap`, hardware-accelerated bilinear filtering (`isFilterBitmap = true`), and `Matrix.setPolyToPoly` 4-point quadrilateral mapping, ensuring seamless alignment during map pan, zoom, and orientation rotation with zero GC invocation during redraws.
+  - **Smart Recompute Throttling:** Background recomputations trigger only when position exceeds 100m, altitude exceeds 30m, or glide ratio changes by >0.2.
+- **Legacy Conical Glide Reach Overlay (`GlideOverlay.kt`):** Maintained as an optional alternative mode displaying concentric circles (25%, 50%, 90%, 100%) with radial gradient fills. Toggleable on-the-fly in the settings bottom sheet (`useHeatmapMode`).
+- **Smart Departure Summit Snapping:** In itinerary planning mode, selecting a departure point automatically evaluates surrounding topography within a 50m radius and sets the reference flight altitude based on the local peak rather than an accidental low-lying gully tap.
 
 ### 4. Flight Track & GPX Logger (`GpxTrackManager.kt`)
 - Records 1 Hz timestamped geographic points with barometric altitude and variometer readings.
