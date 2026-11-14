@@ -2,6 +2,9 @@ package com.vario.app
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.File
@@ -16,6 +19,8 @@ import java.nio.ShortBuffer
 import java.nio.channels.FileChannel
 import java.util.Collections
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipInputStream
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -370,6 +375,126 @@ object HgtTerrainManager {
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Parses the lower-left geographic coordinates (lat, lon) from a tile filename or identifier.
+     * Examples: "N45E005" -> (45.0, 5.0), "S22E055.hgt" -> (-22.0, 55.0).
+     */
+    fun parseTileCoordinates(tileName: String): Pair<Double, Double>? {
+        val clean = tileName.trim().substringBeforeLast(".hgt")
+        val match = Regex("""([NS])(\d{2})([EW])(\d{3})""", RegexOption.IGNORE_CASE).matchEntire(clean) ?: return null
+        val (latHemi, latStr, lonHemi, lonStr) = match.destructured
+        val lat = latStr.toDouble() * if (latHemi.uppercase() == "S") -1.0 else 1.0
+        val lon = lonStr.toDouble() * if (lonHemi.uppercase() == "W") -1.0 else 1.0
+        return Pair(lat, lon)
+    }
+
+    /**
+     * Geographic bounding box for a 1° x 1° SRTM tile.
+     */
+    data class TileBounds(
+        val southLat: Double,
+        val westLon: Double,
+        val northLat: Double,
+        val eastLon: Double
+    )
+
+    /**
+     * Returns the 1° x 1° bounding box for a given tile.
+     */
+    fun getTileBounds(tileName: String): TileBounds? {
+        val (lat, lon) = parseTileCoordinates(tileName) ?: return null
+        return TileBounds(
+            southLat = lat,
+            westLon = lon,
+            northLat = lat + 1.0,
+            eastLon = lon + 1.0
+        )
+    }
+
+    /**
+     * Downloads an SRTM tile by its name (e.g. "N45E005" or "N45E005.hgt").
+     */
+    suspend fun downloadTileByName(
+        tileName: String,
+        onProgress: (Float) -> Unit = {}
+    ): Result<File> {
+        val coords = parseTileCoordinates(tileName)
+            ?: return Result.failure(IllegalArgumentException("Nom de dalle invalide : $tileName"))
+        return downloadTile(coords.first, coords.second, onProgress)
+    }
+
+    /**
+     * Progress information for multi-zone simultaneous download.
+     */
+    data class MultiDownloadProgress(
+        val completedCount: Int,
+        val totalCount: Int,
+        val overallProgress: Float,
+        val currentTile: String? = null
+    )
+
+    /**
+     * Downloads multiple SRTM terrain tiles simultaneously using concurrent coroutines.
+     * All distinct requested tiles run in parallel with real-time aggregate progress reporting.
+     */
+    suspend fun downloadMultipleTiles(
+        tileNames: Collection<String>,
+        onTileProgress: (tileName: String, progress: Float) -> Unit = { _, _ -> },
+        onOverallProgress: (MultiDownloadProgress) -> Unit = {}
+    ): Map<String, Result<File>> = withContext(Dispatchers.IO) {
+        if (tileNames.isEmpty()) return@withContext emptyMap()
+
+        val distinctTiles = tileNames
+            .map { if (it.endsWith(".hgt", ignoreCase = true)) it else "$it.hgt" }
+            .distinct()
+        val totalCount = distinctTiles.size
+        val completedCounter = AtomicInteger(0)
+        val progressMap = ConcurrentHashMap<String, Float>()
+        distinctTiles.forEach { progressMap[it] = 0f }
+
+        onOverallProgress(MultiDownloadProgress(0, totalCount, 0f, null))
+
+        coroutineScope {
+            val deferredMap = distinctTiles.associateWith { tileName ->
+                async {
+                    val coords = parseTileCoordinates(tileName)
+                    val result = if (coords != null) {
+                        downloadTile(coords.first, coords.second) { p ->
+                            progressMap[tileName] = p
+                            val totalSum = progressMap.values.sum()
+                            val totalRatio = (totalSum / totalCount).coerceIn(0f, 1f)
+                            onTileProgress(tileName, p)
+                            onOverallProgress(
+                                MultiDownloadProgress(
+                                    completedCount = completedCounter.get(),
+                                    totalCount = totalCount,
+                                    overallProgress = totalRatio,
+                                    currentTile = tileName
+                                )
+                            )
+                        }
+                    } else {
+                        Result.failure(IllegalArgumentException("Nom de dalle invalide : $tileName"))
+                    }
+                    val completed = completedCounter.incrementAndGet()
+                    progressMap[tileName] = 1.0f
+                    val totalSum = progressMap.values.sum()
+                    val totalRatio = (totalSum / totalCount).coerceIn(0f, 1f)
+                    onOverallProgress(
+                        MultiDownloadProgress(
+                            completedCount = completed,
+                            totalCount = totalCount,
+                            overallProgress = totalRatio,
+                            currentTile = tileName
+                        )
+                    )
+                    result
+                }
+            }
+            deferredMap.mapValues { it.value.await() }
         }
     }
 
