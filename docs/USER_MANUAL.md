@@ -183,7 +183,7 @@ VarioAppli propose deux modes de visualisation pour évaluer en direct les zones
     - Possibilité d'importer vos propres fichiers `.HGT` via le bouton **"Importer un fichier .HGT local"**.
     - La liste des dalles installées avec leur taille est affichée, avec option de suppression pour libérer de l'espace.
     - *Secours en ligne :* Si aucune dalle locale n'est installée, l'application utilise l'API MNT Open-Meteo si le téléphone est connecté au réseau cellulaire.
-  - **Rayon de calcul réaliste ($\Delta H$ au sol) :** Le rayon de la carte thermique s'adapte à la hauteur réelle par rapport au sol du décollage / pilote ($\Delta H = \text{Alt}_{\text{vol}} - \text{Alt}_{\text{sol}}$), évitant les portées disproportionnées calculées par rapport au niveau de la mer.
+  - **Couverture intégrale de la portée ($\Delta H$ global) :** Le rayon de la grille de calcul englobe la totalité de la portée de plané jusqu'au fond de vallée ou au niveau de la mer ($R = \Delta H \times \text{Finesse} \times 1.15$). La zone d'atteinte se fond ainsi naturellement dans le relief jusqu'au contact avec le sol, éliminant tout découpage artificiel en carré sur les bords de la carte.
   - **Ombrage des crêtes (Line-of-Sight) :** Si une montagne ou une crête intermédiaire coupe la pente de descente de l'aile, toute la zone située derrière dans l'ombre du relief est automatiquement masquée (transparente car inaccessible).
   - **Code couleur progressif SpotAir :**
     - **Bleu foncé ($\ge 1200\text{ m}$ AGL) & Bleu ($800 - 1200\text{ m}$) :** Marge de sécurité maximale, très haute clairance.
