@@ -168,9 +168,17 @@ VarioAppli propose deux modes de visualisation pour évaluer en direct les zones
 
 - **🗺️ Carte thermique terrain (Style SpotAir - Recommandé) :**
   - Calcule en temps réel la hauteur exacte au-dessus du sol (AGL) pour chaque point de la carte en projetant la finesse de votre aile sur la topographie 3D.
-  - **Fonctionnement 100% Hors-ligne (Dalles SRTM .HGT) :**
+  - **Fonctionnement 100% Hors-ligne & Téléchargement Multi-Zones (SRTM .HGT) :**
     - Pour voler sans aucune connexion internet et avec un temps de réponse instantané (< 1 ms), téléchargez en avance (en Wi-Fi avant de partir) les dalles de relief SRTM 1°×1° (~1.5 Mo par dalle).
-    - Ouvrez les paramètres (`⚙ Param.` ou `[≡ Menu] -> ⚙️ Relief & Finesse`), puis touchez **"Télécharger la zone actuelle (ex: N45E006)"**.
+    - **Téléchargement simultané multi-zones :** Vous pouvez désormais sélectionner et télécharger plusieurs dalles en parallèle simultanément.
+    - **Interface cartographique interactive de sélection :**
+      - Accessible directement depuis la barre de modes (`[📥 Relief (Multi)]`) ou depuis les paramètres de relief (`"🗺️ Sélectionner des zones sur la carte"`).
+      - Affiche une grille géographique 1°×1° interactive par-dessus le fond de carte.
+      - **Codes couleur en direct :** Vert émeraude (`✓ Installé`), Bleu cyan vif (`📥 Sélectionné`), et Ardoise translucide (`+ Toucher`).
+      - Touchez simplement n'importe quelle dalle sur la carte pour l'ajouter ou la retirer de la sélection.
+      - Raccourcis en 1 clic : *Zone actuelle*, *Pack Alpes (3 zones)*, ou sélection manuelle de massifs entiers.
+      - Touchez **"Télécharger la sélection"** pour lancer le téléchargement simultané de toutes les zones choisies en arrière-plan.
+    - **Retour automatique à la carte :** Dès le lancement du téléchargement ou la validation de la sélection, l'application bascule automatiquement sur la zone de carte de vol (`En Vol`), recentre la vue sur le massif sélectionné, et affiche une bannière HUD discrète indiquant la progression du téléchargement simultané.
     - Des raccourcis en 1 clic permettent également d'installer les massifs majeurs : *Annecy / Chamonix (N45E006)*, *Grenoble / Vercors (N45E005)*, *Alpes du Sud / St-André (N44E006)*, *Pyrénées (N42E000)*, *Vosges / Jura (N47E006)*.
     - Possibilité d'importer vos propres fichiers `.HGT` via le bouton **"Importer un fichier .HGT local"**.
     - La liste des dalles installées avec leur taille est affichée, avec option de suppression pour libérer de l'espace.

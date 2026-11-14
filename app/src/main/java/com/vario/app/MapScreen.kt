@@ -82,6 +82,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 import org.osmdroid.config.Configuration
@@ -98,7 +99,8 @@ import org.osmdroid.views.overlay.Polyline
  */
 enum class MapNavigationMode {
     LIVE_PILOT,         // From my current position to target
-    PLANNING_ITINERARY  // Setup 2 points (Start & Finish) + optional intermediate waypoints
+    PLANNING_ITINERARY, // Setup 2 points (Start & Finish) + optional intermediate waypoints
+    ZONE_DOWNLOAD       // Interactive cartographic selection for multi-zone terrain download
 }
 
 /**
@@ -318,6 +320,154 @@ private fun createHikeWaypointIcon(context: Context, isHike: Boolean): android.g
 }
 
 /**
+ * Interactive cartographic overlay rendering the 1° x 1° SRTM terrain tile grid.
+ *
+ * Capabilities:
+ * - Highlights already installed tiles in emerald green ("✓ Installé").
+ * - Highlights selected tiles in vibrant sky blue ("📥 Sélectionné").
+ * - Displays uninstalled tiles with subtle slate outline ("+ Toucher").
+ * - Pre-allocates Paint, RectF, Point, and GeoPoint objects to ensure 0 dynamic heap allocations in draw().
+ */
+class ZoneGridOverlay(
+    private val isEnabled: () -> Boolean,
+    private val selectedTiles: () -> Set<String>,
+    private val installedTiles: () -> Set<String>
+) : org.osmdroid.views.overlay.Overlay() {
+
+    private val fillInstalled = Paint().apply {
+        color = AndroidColor.argb(55, 34, 197, 94) // Green
+        style = Paint.Style.FILL
+    }
+    private val strokeInstalled = Paint().apply {
+        color = AndroidColor.argb(220, 74, 222, 128)
+        strokeWidth = 3f
+        style = Paint.Style.STROKE
+    }
+
+    private val fillSelected = Paint().apply {
+        color = AndroidColor.argb(95, 2, 132, 199) // Sky Blue
+        style = Paint.Style.FILL
+    }
+    private val strokeSelected = Paint().apply {
+        color = AndroidColor.argb(255, 56, 189, 248)
+        strokeWidth = 4f
+        style = Paint.Style.STROKE
+    }
+
+    private val fillNormal = Paint().apply {
+        color = AndroidColor.argb(25, 30, 41, 59) // Slate
+        style = Paint.Style.FILL
+    }
+    private val strokeNormal = Paint().apply {
+        color = AndroidColor.argb(130, 148, 163, 184)
+        strokeWidth = 2f
+        style = Paint.Style.STROKE
+    }
+
+    private val textPaint = Paint().apply {
+        color = AndroidColor.WHITE
+        textSize = 34f
+        isFakeBoldText = true
+        textAlign = Paint.Align.CENTER
+        setShadowLayer(4f, 0f, 0f, AndroidColor.BLACK)
+    }
+
+    private val subTextPaint = Paint().apply {
+        textSize = 22f
+        textAlign = Paint.Align.CENTER
+        setShadowLayer(3f, 0f, 0f, AndroidColor.BLACK)
+    }
+
+    // Reusable objects for zero-allocation rendering in draw loop
+    private val pTopLeft = android.graphics.Point()
+    private val pBottomRight = android.graphics.Point()
+    private val rectF = android.graphics.RectF()
+    private val geoTl = GeoPoint(0.0, 0.0)
+    private val geoBr = GeoPoint(0.0, 0.0)
+
+    override fun draw(canvas: android.graphics.Canvas?, mapView: MapView?, shadow: Boolean) {
+        if (shadow || canvas == null || mapView == null || !isEnabled()) return
+
+        val proj = mapView.projection ?: return
+        val bbox = mapView.boundingBox ?: return
+
+        val minLat = floor(bbox.latSouth).toInt().coerceIn(-85, 84)
+        val maxLat = floor(bbox.latNorth).toInt().coerceIn(-85, 84)
+        val minLon = floor(bbox.lonWest).toInt().coerceIn(-180, 179)
+        val maxLon = floor(bbox.lonEast).toInt().coerceIn(-180, 179)
+
+        // Safety clamp: if zoomed out excessively, restrict draw extent to vicinity
+        val centerLat = floor(mapView.mapCenter.latitude).toInt()
+        val centerLon = floor(mapView.mapCenter.longitude).toInt()
+        val drawMinLat = (centerLat - 6).coerceAtLeast(minLat)
+        val drawMaxLat = (centerLat + 6).coerceAtMost(maxLat)
+        val drawMinLon = (centerLon - 8).coerceAtLeast(minLon)
+        val drawMaxLon = (centerLon + 8).coerceAtMost(maxLon)
+
+        val selected = selectedTiles()
+        val installed = installedTiles()
+
+        for (lat in drawMinLat..drawMaxLat) {
+            for (lon in drawMinLon..drawMaxLon) {
+                geoTl.setCoords(lat + 1.0, lon.toDouble())
+                geoBr.setCoords(lat.toDouble(), lon + 1.0)
+
+                proj.toPixels(geoTl, pTopLeft)
+                proj.toPixels(geoBr, pBottomRight)
+
+                val left = pTopLeft.x.toFloat()
+                val top = pTopLeft.y.toFloat()
+                val right = pBottomRight.x.toFloat()
+                val bottom = pBottomRight.y.toFloat()
+
+                rectF.set(left, top, right, bottom)
+
+                val tileName = HgtTerrainManager.getTileFilename(lat.toDouble(), lon.toDouble())
+                val isSel = selected.contains(tileName)
+                val isInst = installed.contains(tileName)
+
+                when {
+                    isSel -> {
+                        canvas.drawRect(rectF, fillSelected)
+                        canvas.drawRect(rectF, strokeSelected)
+                    }
+                    isInst -> {
+                        canvas.drawRect(rectF, fillInstalled)
+                        canvas.drawRect(rectF, strokeInstalled)
+                    }
+                    else -> {
+                        canvas.drawRect(rectF, fillNormal)
+                        canvas.drawRect(rectF, strokeNormal)
+                    }
+                }
+
+                val width = right - left
+                val height = bottom - top
+                if (width > 80f && height > 60f) {
+                    val cx = (left + right) / 2f
+                    val cy = (top + bottom) / 2f
+                    val baseName = tileName.substringBeforeLast(".hgt")
+
+                    canvas.drawText(baseName, cx, cy - 8f, textPaint)
+
+                    val statusMsg = when {
+                        isSel -> "📥 SÉLECTIONNÉ"
+                        isInst -> "✓ INSTALLÉ"
+                        else -> "+ TOUCHER"
+                    }
+                    subTextPaint.color = when {
+                        isSel -> AndroidColor.rgb(125, 211, 252)
+                        isInst -> AndroidColor.rgb(134, 239, 172)
+                        else -> AndroidColor.rgb(203, 213, 225)
+                    }
+                    canvas.drawText(statusMsg, cx, cy + 22f, subTextPaint)
+                }
+            }
+        }
+    }
+}
+
+/**
  * High-performance Map Tab for VarioAppli.
  *
  * Features:
@@ -374,10 +524,25 @@ fun MapScreen(
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showTracksSheet by remember { mutableStateOf(false) }
 
+    // Multi-zone download state
+    var selectedTilesForDownload by remember { mutableStateOf(setOf<String>()) }
+    var installedTilesSet by remember { mutableStateOf(HgtTerrainManager.getInstalledTiles().toSet()) }
+    var isMultiDownloading by remember { mutableStateOf(false) }
+    var multiDownloadProgress by remember { mutableFloatStateOf(0f) }
+    var multiDownloadCount by remember { mutableStateOf(Pair(0, 0)) }
+    var multiDownloadStatusMsg by remember { mutableStateOf<String?>(null) }
+
     // References to map objects
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     val glideOverlay = remember { GlideOverlay() }
     val heatmapOverlay = remember { ReachabilityHeatmapOverlay() }
+    val zoneGridOverlay = remember {
+        ZoneGridOverlay(
+            isEnabled = { navMode == MapNavigationMode.ZONE_DOWNLOAD },
+            selectedTiles = { selectedTilesForDownload },
+            installedTiles = { installedTilesSet }
+        )
+    }
     var pilotMarkerRef by remember { mutableStateOf<Marker?>(null) }
     var targetMarkerRef by remember { mutableStateOf<Marker?>(null) }
     var startMarkerRef by remember { mutableStateOf<Marker?>(null) }
@@ -414,6 +579,51 @@ fun MapScreen(
     val currentIntermediateWps by rememberUpdatedState(intermediateWaypoints)
     val currentFinishPoint by rememberUpdatedState(finishPoint)
     val currentIsStartAltAuto by rememberUpdatedState(isStartAltAuto)
+
+    val startMultiZoneDownload: () -> Unit = {
+        val tilesToDownload = selectedTilesForDownload.toList()
+        if (tilesToDownload.isNotEmpty() && !isMultiDownloading) {
+            isMultiDownloading = true
+            multiDownloadProgress = 0f
+            multiDownloadCount = Pair(0, tilesToDownload.size)
+            multiDownloadStatusMsg = "Téléchargement de ${tilesToDownload.size} zones..."
+
+            // Requirement 3: Retour automatique à la zone de carte après sélection!
+            navMode = MapNavigationMode.LIVE_PILOT
+            val firstTile = tilesToDownload.first()
+            HgtTerrainManager.parseTileCoordinates(firstTile)?.let { (lat, lon) ->
+                mapViewRef?.controller?.animateTo(GeoPoint(lat + 0.5, lon + 0.5))
+            }
+
+            coroutineScope.launch {
+                val results = HgtTerrainManager.downloadMultipleTiles(
+                    tileNames = tilesToDownload,
+                    onOverallProgress = { progress ->
+                        multiDownloadProgress = progress.overallProgress
+                        multiDownloadCount = Pair(progress.completedCount, progress.totalCount)
+                        multiDownloadStatusMsg = if (progress.currentTile != null) {
+                            "Téléchargement : ${progress.completedCount}/${progress.totalCount} (${progress.currentTile.substringBeforeLast(".hgt")})"
+                        } else {
+                            "Téléchargement : ${progress.completedCount}/${progress.totalCount}"
+                        }
+                    }
+                )
+                isMultiDownloading = false
+                val successCount = results.values.count { it.isSuccess }
+                installedTilesSet = HgtTerrainManager.getInstalledTiles().toSet()
+                mapViewRef?.invalidate()
+
+                if (successCount == tilesToDownload.size) {
+                    multiDownloadStatusMsg = "✓ $successCount zones prêtes pour le vol hors-ligne !"
+                    Toast.makeText(context, "✓ $successCount zones téléchargées avec succès !", Toast.LENGTH_SHORT).show()
+                } else {
+                    multiDownloadStatusMsg = "Téléchargement partiel : $successCount/${tilesToDownload.size} réussis"
+                    Toast.makeText(context, "Téléchargement terminé : $successCount/${tilesToDownload.size} réussis", Toast.LENGTH_LONG).show()
+                }
+                selectedTilesForDownload = emptySet()
+            }
+        }
+    }
 
     // Register elevation provider listener to invalidate map upon online elevation retrieval
     DisposableEffect(Unit) {
@@ -607,6 +817,16 @@ fun MapScreen(
                     val mapEventsReceiver = object : MapEventsReceiver {
                         override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean {
                             if (p == null) return false
+                            if (currentNavMode == MapNavigationMode.ZONE_DOWNLOAD) {
+                                val tile = HgtTerrainManager.getTileFilename(p.latitude, p.longitude)
+                                selectedTilesForDownload = if (selectedTilesForDownload.contains(tile)) {
+                                    selectedTilesForDownload - tile
+                                } else {
+                                    selectedTilesForDownload + tile
+                                }
+                                invalidate()
+                                return true
+                            }
                             if (currentNavMode == MapNavigationMode.PLANNING_ITINERARY) {
                                 when (currentPlanningAction) {
                                     PlanningAction.SET_START -> {
@@ -648,6 +868,9 @@ fun MapScreen(
 
                         override fun longPressHelper(p: GeoPoint?): Boolean {
                             if (p == null) return false
+                            if (currentNavMode == MapNavigationMode.ZONE_DOWNLOAD) {
+                                return singleTapConfirmedHelper(p)
+                            }
                             if (currentNavMode == MapNavigationMode.LIVE_PILOT) {
                                 targetPoint = p
                                 tMarker.position = p
@@ -666,6 +889,7 @@ fun MapScreen(
                     overlays.add(MapEventsOverlay(mapEventsReceiver))
                     overlays.add(heatmapOverlay)
                     overlays.add(glideOverlay)
+                    overlays.add(zoneGridOverlay)
                     overlays.add(pastTrackPolyline)
                     overlays.add(liveTrackPolyline)
                     overlays.add(routePolyline)
@@ -988,58 +1212,207 @@ fun MapScreen(
             }
         }
 
-        // ── Route & Target Information Card ─────────────────────────────────
-        if (navMode == MapNavigationMode.LIVE_PILOT) {
-            val currentRoute = routeResult
-            val currentTarget = targetPoint
-            if (currentTarget != null && currentRoute != null) {
-                val targetElev = TerrainElevationProvider.getElevation(currentTarget.latitude, currentTarget.longitude)
-                val deniv = TerrainElevationProvider.getDenivellation(varioData.altitudeM, currentTarget.latitude, currentTarget.longitude)
-                TargetRouteCard(
-                    route = currentRoute,
-                    targetElevationM = targetElev,
-                    denivellationM = deniv,
-                    nominalGlide = glideSettings.glideRatio,
-                    onClearTarget = {
-                        targetPoint = null
-                        routeResult = null
-                        targetMarkerRef?.let { tMarker ->
-                            mapViewRef?.overlays?.remove(tMarker)
+        // ── Multi-Zone Mode Top Guidance Banner ──────────────────────────────
+        if (navMode == MapNavigationMode.ZONE_DOWNLOAD) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 135.dp, start = 14.dp, end = 14.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xF00F172A))
+                    .border(1.dp, Color(0xFF0284C7), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "🗺️ Mode Sélection Multi-Zones",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF38BDF8)
+                        )
+                        Text(
+                            text = "Touchez les dalles 1°×1° pour sélectionner les zones hors-ligne.",
+                            fontSize = 11.sp,
+                            color = Color(0xFFCBD5E1)
+                        )
+                    }
+                    Surface(
+                        onClick = {
+                            navMode = MapNavigationMode.LIVE_PILOT
+                            mapViewRef?.invalidate()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF334155),
+                        border = BorderStroke(1.dp, Color(0xFF475569))
+                    ) {
+                        Text(
+                            text = "✕ Retour Carte",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Floating Multi-Zone Download Progress HUD Banner ─────────────────
+        if (isMultiDownloading || (multiDownloadStatusMsg != null && navMode == MapNavigationMode.LIVE_PILOT)) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = if (loadedPastTrackName != null) 210.dp else 145.dp, start = 16.dp, end = 16.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xF20F172A))
+                    .border(1.dp, if (isMultiDownloading) Color(0xFF0284C7) else Color(0xFF22C55E), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(if (isMultiDownloading) "⏳" else "✓", fontSize = 13.sp)
+                            Text(
+                                text = multiDownloadStatusMsg ?: "Téléchargement multi-zones...",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                        }
+                        if (!isMultiDownloading) {
+                            Text(
+                                text = "✕",
+                                fontSize = 12.sp,
+                                color = Color(0xFF94A3B8),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { multiDownloadStatusMsg = null }
+                                    .padding(4.dp)
+                            )
+                        }
+                    }
+                    if (isMultiDownloading) {
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { multiDownloadProgress },
+                            modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                            color = Color(0xFF38BDF8),
+                            trackColor = Color(0xFF334155)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Route, Itinerary or Multi-Zone Download Cards ───────────────────
+        when (navMode) {
+            MapNavigationMode.LIVE_PILOT -> {
+                val currentRoute = routeResult
+                val currentTarget = targetPoint
+                if (currentTarget != null && currentRoute != null) {
+                    val targetElev = TerrainElevationProvider.getElevation(currentTarget.latitude, currentTarget.longitude)
+                    val deniv = TerrainElevationProvider.getDenivellation(varioData.altitudeM, currentTarget.latitude, currentTarget.longitude)
+                    TargetRouteCard(
+                        route = currentRoute,
+                        targetElevationM = targetElev,
+                        denivellationM = deniv,
+                        nominalGlide = glideSettings.glideRatio,
+                        onClearTarget = {
+                            targetPoint = null
+                            routeResult = null
+                            targetMarkerRef?.let { tMarker ->
+                                mapViewRef?.overlays?.remove(tMarker)
+                            }
+                            mapViewRef?.invalidate()
+                        },
+                        onOpenSettings = { showSettingsSheet = true },
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 14.dp, bottom = 86.dp, end = 80.dp)
+                    )
+                }
+            }
+            MapNavigationMode.PLANNING_ITINERARY -> {
+                if (startPoint != null || finishPoint != null) {
+                    ItineraryRouteCard(
+                        itinerary = itineraryResult,
+                        startPoint = startPoint,
+                        finishPoint = finishPoint,
+                        intermediateWaypoints = intermediateWaypoints,
+                        startAltitudeM = startAltitudeM,
+                        nominalGlide = glideSettings.glideRatio,
+                        onAdjustStartAlt = { delta ->
+                            isStartAltAuto = false
+                            startAltitudeM = (startAltitudeM + delta).coerceIn(0f, 6000f)
+                        },
+                        onOpenSettings = { showSettingsSheet = true },
+                        onClearItinerary = {
+                            startPoint = null
+                            finishPoint = null
+                            intermediateWaypoints = emptyList()
+                            itineraryResult = null
+                            planningAction = PlanningAction.SET_START
+                            mapViewRef?.invalidate()
+                        },
+                        onRemoveWaypoint = { index ->
+                            intermediateWaypoints = intermediateWaypoints.filterIndexed { i, _ -> i != index }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 14.dp, bottom = 86.dp, end = 80.dp)
+                    )
+                }
+            }
+            MapNavigationMode.ZONE_DOWNLOAD -> {
+                val curLat = if (varioData.latitude != 0.0) varioData.latitude else 45.92
+                val curLon = if (varioData.longitude != 0.0) varioData.longitude else 6.87
+                val curTile = HgtTerrainManager.getTileFilename(curLat, curLon)
+
+                MultiZoneSelectionBottomCard(
+                    selectedTiles = selectedTilesForDownload,
+                    installedTiles = installedTilesSet,
+                    currentTileName = curTile,
+                    onToggleTile = { tile ->
+                        selectedTilesForDownload = if (selectedTilesForDownload.contains(tile)) {
+                            selectedTilesForDownload - tile
+                        } else {
+                            selectedTilesForDownload + tile
                         }
                         mapViewRef?.invalidate()
                     },
-                    onOpenSettings = { showSettingsSheet = true },
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 14.dp, bottom = 86.dp, end = 80.dp)
-                )
-            }
-        } else {
-            // Planning Itinerary Mode bottom card
-            if (startPoint != null || finishPoint != null) {
-                ItineraryRouteCard(
-                    itinerary = itineraryResult,
-                    startPoint = startPoint,
-                    finishPoint = finishPoint,
-                    intermediateWaypoints = intermediateWaypoints,
-                    startAltitudeM = startAltitudeM,
-                    nominalGlide = glideSettings.glideRatio,
-                    onAdjustStartAlt = { delta ->
-                        isStartAltAuto = false
-                        startAltitudeM = (startAltitudeM + delta).coerceIn(0f, 6000f)
-                    },
-                    onOpenSettings = { showSettingsSheet = true },
-                    onClearItinerary = {
-                        startPoint = null
-                        finishPoint = null
-                        intermediateWaypoints = emptyList()
-                        itineraryResult = null
-                        planningAction = PlanningAction.SET_START
+                    onClearSelection = {
+                        selectedTilesForDownload = emptySet()
                         mapViewRef?.invalidate()
                     },
-                    onRemoveWaypoint = { index ->
-                        intermediateWaypoints = intermediateWaypoints.filterIndexed { i, _ -> i != index }
+                    onAddCurrentTile = {
+                        selectedTilesForDownload = selectedTilesForDownload + curTile
+                        mapViewRef?.invalidate()
                     },
+                    onAddAlpsPreset = {
+                        selectedTilesForDownload = selectedTilesForDownload + setOf("N45E005.hgt", "N45E006.hgt", "N44E006.hgt")
+                        mapViewRef?.invalidate()
+                    },
+                    onStartDownload = startMultiZoneDownload,
+                    onBackToMap = {
+                        navMode = MapNavigationMode.LIVE_PILOT
+                        mapViewRef?.invalidate()
+                    },
+                    isDownloading = isMultiDownloading,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(start = 14.dp, bottom = 86.dp, end = 80.dp)
@@ -1234,7 +1607,11 @@ fun MapScreen(
                     mapViewRef?.setTileSource(newProvider.createTileSource())
                 },
                 currentLat = if (varioData.latitude != 0.0) varioData.latitude else 45.92,
-                currentLon = if (varioData.longitude != 0.0) varioData.longitude else 6.87
+                currentLon = if (varioData.longitude != 0.0) varioData.longitude else 6.87,
+                onOpenZoneMapSelector = {
+                    navMode = MapNavigationMode.ZONE_DOWNLOAD
+                    mapViewRef?.invalidate()
+                }
             )
         }
 
@@ -1599,10 +1976,25 @@ private fun MapModeSwitcherBar(
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
                 Text(
-                    text = "🗺 Itinéraire (2 pts / Étapes)",
+                    text = "🗺 Itinéraire",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (navMode == MapNavigationMode.PLANNING_ITINERARY) Color.White else Color(0xFF94A3B8)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (navMode == MapNavigationMode.ZONE_DOWNLOAD) Color(0xFF0284C7) else Color.Transparent)
+                    .clickable { onSelectMode(MapNavigationMode.ZONE_DOWNLOAD) }
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "📥 Relief (Multi)",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (navMode == MapNavigationMode.ZONE_DOWNLOAD) Color.White else Color(0xFF94A3B8)
                 )
             }
         }
@@ -2102,6 +2494,186 @@ private val WING_PRESETS = listOf(
     WingCategoryPreset("CCC / Compétition", "Race", 12.0f)
 )
 
+/**
+ * Interactive bottom control card for multi-zone terrain tile selection and download.
+ */
+@Composable
+private fun MultiZoneSelectionBottomCard(
+    selectedTiles: Set<String>,
+    installedTiles: Set<String>,
+    currentTileName: String,
+    onToggleTile: (String) -> Unit,
+    onClearSelection: () -> Unit,
+    onAddCurrentTile: () -> Unit,
+    onAddAlpsPreset: () -> Unit,
+    onStartDownload: () -> Unit,
+    onBackToMap: () -> Unit,
+    isDownloading: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xF20F172A)),
+        border = BorderStroke(1.dp, Color(0xFF0284C7))
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Header: count and estimated size
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "📥 Téléchargement Multi-Zones",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (selectedTiles.isEmpty()) "Aucune zone sélectionnée. Touchez la carte !"
+                               else "${selectedTiles.size} zone${if (selectedTiles.size > 1) "s" else ""} (~${String.format(Locale.US, "%.1f", selectedTiles.size * 1.5)} Mo)",
+                        fontSize = 12.sp,
+                        color = if (selectedTiles.isEmpty()) Color(0xFF94A3B8) else Color(0xFF38BDF8),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Surface(
+                    onClick = onBackToMap,
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF1E293B),
+                    border = BorderStroke(1.dp, Color(0xFF334155))
+                ) {
+                    Text(
+                        text = "Fermer",
+                        fontSize = 11.sp,
+                        color = Color(0xFFCBD5E1),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            // Quick preset chips
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Surface(
+                    onClick = onAddCurrentTile,
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF1E293B),
+                    border = BorderStroke(1.dp, Color(0xFF38BDF8))
+                ) {
+                    Text(
+                        text = "+ Zone actuelle (${currentTileName.substringBeforeLast(".hgt")})",
+                        fontSize = 11.sp,
+                        color = Color(0xFF38BDF8),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
+                Surface(
+                    onClick = onAddAlpsPreset,
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF1E293B),
+                    border = BorderStroke(1.dp, Color(0xFF4ADE80))
+                ) {
+                    Text(
+                        text = "+ Pack Alpes (3 zones)",
+                        fontSize = 11.sp,
+                        color = Color(0xFF86EFAC),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
+                if (selectedTiles.isNotEmpty()) {
+                    Surface(
+                        onClick = onClearSelection,
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF334155)
+                    ) {
+                        Text(
+                            text = "✕ Tout effacer",
+                            fontSize = 11.sp,
+                            color = Color(0xFFFCA5A5),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            // Selected tiles chip row
+            if (selectedTiles.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    selectedTiles.forEach { tile ->
+                        val isAlreadyInstalled = installedTiles.contains(tile)
+                        val baseName = tile.substringBeforeLast(".hgt")
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isAlreadyInstalled) Color(0xFF14532D) else Color(0xFF0369A1),
+                            border = BorderStroke(1.dp, if (isAlreadyInstalled) Color(0xFF4ADE80) else Color(0xFF38BDF8))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "$baseName ${if (isAlreadyInstalled) "(installée)" else ""}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "✕",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFCBD5E1),
+                                    modifier = Modifier.clickable { onToggleTile(tile) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Primary Download Button (Triggers concurrent download and automatic return to map)
+            Button(
+                onClick = onStartDownload,
+                enabled = selectedTiles.isNotEmpty() && !isDownloading,
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF0284C7),
+                    disabledContainerColor = Color(0xFF334155)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(if (isDownloading) "⏳" else "📥", fontSize = 16.sp)
+                    Text(
+                        text = if (isDownloading) "Téléchargement simultané en cours..."
+                               else if (selectedTiles.isEmpty()) "Sélectionnez au moins une zone sur la carte"
+                               else "Télécharger les ${selectedTiles.size} zones sélectionnées",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
 // ── Unified Glide & Map Settings Bottom Sheet ────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -2113,7 +2685,8 @@ fun GlideSettingsBottomSheet(
     onUpdateSettings: (GlideSettings) -> Unit,
     onSelectBasemap: ((BasemapProvider) -> Unit)? = null,
     currentLat: Double = 45.92,
-    currentLon: Double = 6.87
+    currentLon: Double = 6.87,
+    onOpenZoneMapSelector: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -2558,6 +3131,33 @@ fun GlideSettingsBottomSheet(
                             Text(if (isTileInstalled) "🔄" else "📥", fontSize = 16.sp)
                             Text(
                                 text = if (isDownloading && downloadTileTarget == currentTileName) "Téléchargement en cours..." else if (isTileInstalled) "Mettre à jour la dalle $currentTileName (~1.5 Mo)" else "Télécharger la zone actuelle $currentTileName (~1.5 Mo)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    // Interactive Multi-Zone map selector button
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            onOpenZoneMapSelector?.invoke()
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF0369A1)
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFF38BDF8)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("🗺️", fontSize = 16.sp)
+                            Text(
+                                text = "Sélectionner des zones sur la carte (Multi-zones)",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White

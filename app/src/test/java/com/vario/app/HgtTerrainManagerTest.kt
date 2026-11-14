@@ -127,4 +127,99 @@ class HgtTerrainManagerTest {
         assertTrue(deleted)
         assertFalse(HgtTerrainManager.isTileAvailable(45.5, 5.5))
     }
+
+    @Test
+    fun parseTileCoordinates_parsesFilenamesAccurately() {
+        // Northern / Eastern
+        val coords1 = HgtTerrainManager.parseTileCoordinates("N45E005")
+        assertNotNull(coords1)
+        assertEquals(45.0, coords1.first)
+        assertEquals(5.0, coords1.second)
+
+        val coords2 = HgtTerrainManager.parseTileCoordinates("N45E006.hgt")
+        assertNotNull(coords2)
+        assertEquals(45.0, coords2.first)
+        assertEquals(6.0, coords2.second)
+
+        // Southern / Eastern
+        val coords3 = HgtTerrainManager.parseTileCoordinates("S22E055.hgt")
+        assertNotNull(coords3)
+        assertEquals(-22.0, coords3.first)
+        assertEquals(55.0, coords3.second)
+
+        // Southern / Western
+        val coords4 = HgtTerrainManager.parseTileCoordinates("s15w075")
+        assertNotNull(coords4)
+        assertEquals(-15.0, coords4.first)
+        assertEquals(-75.0, coords4.second)
+
+        // Equator / Meridian
+        val coords5 = HgtTerrainManager.parseTileCoordinates("N00E000")
+        assertNotNull(coords5)
+        assertEquals(0.0, coords5.first)
+        assertEquals(0.0, coords5.second)
+
+        // Invalid
+        assertEquals(null, HgtTerrainManager.parseTileCoordinates("invalid.hgt"))
+        assertEquals(null, HgtTerrainManager.parseTileCoordinates("N45"))
+    }
+
+    @Test
+    fun getTileBounds_computesOneDegreeBoundingBox() {
+        val bounds = HgtTerrainManager.getTileBounds("N45E005.hgt")
+        assertNotNull(bounds)
+        assertEquals(45.0, bounds.southLat)
+        assertEquals(5.0, bounds.westLon)
+        assertEquals(46.0, bounds.northLat)
+        assertEquals(6.0, bounds.eastLon)
+
+        val boundsSouth = HgtTerrainManager.getTileBounds("S22E055")
+        assertNotNull(boundsSouth)
+        assertEquals(-22.0, boundsSouth.southLat)
+        assertEquals(55.0, boundsSouth.westLon)
+        assertEquals(-21.0, boundsSouth.northLat)
+        assertEquals(56.0, boundsSouth.eastLon)
+    }
+
+    @Test
+    fun downloadMultipleTiles_handlesEmptyAndPreinstalledTilesSimultaneously() = kotlinx.coroutines.runBlocking {
+        // 1. Empty list
+        val emptyResult = HgtTerrainManager.downloadMultipleTiles(emptyList())
+        assertTrue(emptyResult.isEmpty())
+
+        // 2. Pre-create 2 valid synthetic tiles on disk (>= 2MB)
+        val tileNames = listOf("N45E005.hgt", "N45E006.hgt")
+        for (name in tileNames) {
+            val file = File(terrainDir, name)
+            val raf = RandomAccessFile(file, "rw")
+            raf.setLength(2_884_802L)
+            raf.close()
+        }
+
+        var lastProgress: HgtTerrainManager.MultiDownloadProgress? = null
+        val results = HgtTerrainManager.downloadMultipleTiles(
+            tileNames = tileNames,
+            onOverallProgress = { p ->
+                lastProgress = p
+            }
+        )
+
+        assertEquals(2, results.size)
+        assertTrue(results.containsKey("N45E005.hgt"))
+        assertTrue(results.containsKey("N45E006.hgt"))
+        assertTrue(results["N45E005.hgt"]!!.isSuccess)
+        assertTrue(results["N45E006.hgt"]!!.isSuccess)
+
+        assertNotNull(lastProgress)
+        assertEquals(2, lastProgress!!.totalCount)
+        assertEquals(2, lastProgress!!.completedCount)
+        assertEquals(1.0f, lastProgress!!.overallProgress)
+    }
+
+    @Test
+    fun downloadMultipleTiles_handlesInvalidTileNamesGracefully() = kotlinx.coroutines.runBlocking {
+        val results = HgtTerrainManager.downloadMultipleTiles(listOf("INVALID_TILE.hgt"))
+        assertEquals(1, results.size)
+        assertTrue(results["INVALID_TILE.hgt"]!!.isFailure)
+    }
 }

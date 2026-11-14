@@ -289,6 +289,14 @@ stateDiagram-v2
 - **Direct Memory-Mapped Binary Parsing:** Directly reads standard 1°×1° SRTM binary elevation tiles (`.hgt`), supporting both SRTM-3 (3 arc-seconds, 1201×1201 nodes, ~2.8 MB) and SRTM-1 (1 arc-second, 3601×3601 nodes, ~25 MB).
 - **Zero Dynamic Allocation & Nanosecond Latency:** Tiles are mapped into direct `ShortBuffer` memory (`FileChannel.MapMode.READ_ONLY`), yielding microsecond lookup latency (< 50 ns) with **0 bytes of heap allocation** per query.
 - **Bilinear Spatial Interpolation:** Computes smooth continuous elevation between adjacent 16-bit grid nodes, preventing stepped elevation artifacts along ridge lines.
+- **Multi-Zone Simultaneous Download Engine:**
+  - `downloadMultipleTiles(tileNames, onTileProgress, onOverallProgress)`: Concurrently downloads multiple selected 1°×1° SRTM terrain tiles simultaneously using Kotlin Coroutines `async(Dispatchers.IO)`. Each download safely streams to an isolated temporary archive before unzipping, ensuring thread safety and HTTP redirect resilience.
+  - Coordinate extraction (`parseTileCoordinates(tileName)`) and bounding box computation (`getTileBounds(tileName)`).
+  - Real-time aggregate progress reporting combining individual chunk downloads with atomic completion counters.
+- **Interactive Cartographic Selection & Automatic Return:**
+  - `ZoneGridOverlay`: High-performance OsmDroid overlay superimposing the 1°×1° SRTM grid directly over vector/satellite maps with pre-allocated native Android Paint objects (0 heap allocation in `draw`). Color-coded states: Emerald Green for installed tiles, Sky Blue for selected tiles, and Translucent Slate for available tiles.
+  - Interactive tap detection toggles selection of individual 1°×1° geographic cells.
+  - **Automatic Return to Map Area:** Triggering a multi-zone download or validating selection automatically transitions navigation mode back to the primary flight deck (`MapNavigationMode.LIVE_PILOT`) and smoothly recenters the camera onto the target map zone while the concurrent download streams in the background with a floating HUD status banner.
 - **Offline Pre-Flight Caching & Management:**
   - Auto-formatting: maps coordinates to standard filenames (e.g. `(45.92, 6.87)` -> `N45E006.hgt`).
   - Pre-flight Wi-Fi download: fetches compressed `.hgt.zip` from public mirrors (e.g. ArduPilot SRTM mirror) with HTTP redirect resilience, unzips in background, and registers into `/terrain/` storage.

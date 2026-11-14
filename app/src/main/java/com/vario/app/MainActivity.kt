@@ -1524,7 +1524,11 @@ private fun VarioScreen(
                     GlideSettingsManager.saveSettings(context, newSettings)
                 },
                 currentLat = if (varioData.latitude != 0.0) varioData.latitude else 45.92,
-                currentLon = if (varioData.longitude != 0.0) varioData.longitude else 6.87
+                currentLon = if (varioData.longitude != 0.0) varioData.longitude else 6.87,
+                onOpenZoneMapSelector = {
+                    showGlideSettingsSheet = false
+                    onOpenMap()
+                }
             )
         }
     }
