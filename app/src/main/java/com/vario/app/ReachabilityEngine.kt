@@ -40,6 +40,20 @@ object ReachabilityEngine {
     const val COLOR_UNREACH   = 0x00000000           // Unreachable / obstructed (transparent)
 
     /**
+     * Computes the maximum reachable horizontal radius in meters covering the entire glide range.
+     * Based on start altitude MSL and wing glide ratio, ensuring the bounding grid encompasses
+     * the full potential reach down to sea level / valley floors, eliminating square edge truncation.
+     */
+    fun computeReachableRadiusM(
+        startAltM: Float,
+        glideRatio: Float,
+        safetyFactor: Float = 1.15f
+    ): Float {
+        val deltaH = startAltM.coerceAtLeast(100f)
+        return (deltaH * glideRatio * safetyFactor).coerceIn(1500f, 40000f)
+    }
+
+    /**
      * Maps an Above Ground Level clearance in meters to an ARGB color.
      * Uses smooth linear interpolation between thresholds.
      */

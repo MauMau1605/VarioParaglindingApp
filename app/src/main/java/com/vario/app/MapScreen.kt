@@ -926,7 +926,10 @@ fun MapScreen(
                         val groundRefAlt = if (targetPoint != null) {
                             TerrainElevationProvider.getElevation(targetPoint!!.latitude, targetPoint!!.longitude)
                         } else {
-                            TerrainElevationProvider.getElevation(varioData.latitude, varioData.longitude)
+                            minOf(
+                                TerrainElevationProvider.DEFAULT_VALLEY_BASELINE_M,
+                                TerrainElevationProvider.getElevation(varioData.latitude, varioData.longitude)
+                            )
                         }
                         val showHeatmap = glideSettings.isGlideAreaEnabled && glideSettings.useHeatmapMode
                         val showCircle = glideSettings.isGlideAreaEnabled && !glideSettings.useHeatmapMode
@@ -1017,7 +1020,10 @@ fun MapScreen(
                         val groundRefAlt = if (fp != null) {
                             TerrainElevationProvider.getElevation(fp.latitude, fp.longitude)
                         } else {
-                            TerrainElevationProvider.getElevation(sp.latitude, sp.longitude)
+                            minOf(
+                                TerrainElevationProvider.DEFAULT_VALLEY_BASELINE_M,
+                                TerrainElevationProvider.getElevation(sp.latitude, sp.longitude)
+                            )
                         }
                         val showHeatmap = glideSettings.isGlideAreaEnabled && glideSettings.useHeatmapMode
                         val showCircle = glideSettings.isGlideAreaEnabled && !glideSettings.useHeatmapMode

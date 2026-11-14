@@ -96,7 +96,7 @@ class ReachabilityHeatmapOverlay(
         gr: Float,
         safetyMargin: Float = 50f,
         enabled: Boolean,
-        groundAltM: Float? = null,
+        @Suppress("UNUSED_PARAMETER") groundAltM: Float? = null,
         mapView: MapView? = null
     ) {
         currentPosition = position
@@ -112,15 +112,14 @@ class ReachabilityHeatmapOverlay(
             return
         }
 
-        checkAndTriggerRecompute(position, altM, gr, safetyMargin, groundAltM)
+        checkAndTriggerRecompute(position, altM, gr, safetyMargin)
     }
 
     private fun checkAndTriggerRecompute(
         pos: GeoPoint,
         altM: Float,
         gr: Float,
-        marginM: Float,
-        groundAltM: Float?
+        marginM: Float
     ) {
         val distMoved = distanceM(pos.latitude, pos.longitude, lastCalculatedLat, lastCalculatedLon)
         val altDiff = abs(altM - lastCalculatedAlt)
@@ -129,7 +128,7 @@ class ReachabilityHeatmapOverlay(
         val isDirty = !hasBitmap || distMoved > 100f || altDiff > 30f || grDiff > 0.2f
 
         if (isDirty && !isComputing) {
-            recomputeAsync(pos.latitude, pos.longitude, altM, gr, marginM, groundAltM)
+            recomputeAsync(pos.latitude, pos.longitude, altM, gr, marginM)
         }
     }
 
@@ -138,17 +137,14 @@ class ReachabilityHeatmapOverlay(
         centerLon: Double,
         altM: Float,
         gr: Float,
-        marginM: Float,
-        groundAltM: Float?
+        marginM: Float
     ) {
         computationJob?.cancel()
         computationJob = scope.launch {
             isComputing = true
             try {
-                // Compute reachable radius based on altitude above ground clearance and glide ratio
-                val groundRef = groundAltM ?: TerrainElevationProvider.getElevation(centerLat, centerLon)
-                val deltaH = (altM - groundRef).coerceAtLeast(50f)
-                val radiusM = (deltaH * gr * 1.15f).coerceIn(1200f, 25000f)
+                // Compute reachable radius covering the entire glide range down to valley/sea level
+                val radiusM = ReachabilityEngine.computeReachableRadiusM(altM, gr)
 
                 // Fetch elevation grid (uses offline HGT when available)
                 val grid = TerrainElevationProvider.getElevationGrid(

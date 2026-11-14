@@ -127,4 +127,75 @@ class ReachabilityEngineTest {
         // Row 4 (valley behind mountain) must be BLOCKED by line-of-sight terrain collision!
         assertEquals(ReachabilityEngine.COLOR_UNREACH, pixels[4])
     }
+
+    @Test
+    fun computeReachableRadiusM_coversFullGlideRange() {
+        val gr = 8.5f
+
+        // High mountain flight at 1500m MSL
+        val r1500 = ReachabilityEngine.computeReachableRadiusM(1500f, gr)
+        // 1500 * 8.5 * 1.15 = 14662.5m
+        assertTrue(r1500 >= 14000f, "Radius at 1500m should cover entire glide range (>14km), got $r1500")
+
+        // Flight at 500m MSL: 500 * 8.5 * 1.15 = 4887.5m
+        val r500 = ReachabilityEngine.computeReachableRadiusM(500f, gr)
+        assertTrue(r500 >= 4800f, "Radius at 500m should cover entire glide range (>4.8km), got $r500")
+
+        // Low coastal takeoff at 50m MSL: should clamp to minimum 1500m
+        val r50 = ReachabilityEngine.computeReachableRadiusM(50f, gr)
+        assertEquals(1500f, r50)
+
+        // Very high alpine altitude (4500m): should clamp to maximum 40000m
+        val r4500 = ReachabilityEngine.computeReachableRadiusM(4500f, gr)
+        assertEquals(40000f, r4500)
+    }
+
+    @Test
+    fun computeReachabilityPixels_fullRangeGridPerimeterIsTransparent() {
+        val centerLat = 45.0
+        val centerLon = 6.0
+        val pilotAlt = 1500f
+        val gr = 8.5f
+        val safetyMargin = 50f
+
+        val radiusM = ReachabilityEngine.computeReachableRadiusM(pilotAlt, gr)
+        val deltaLat = radiusM / 111139.0
+        val deltaLon = radiusM / (111139.0 * Math.cos(Math.toRadians(centerLat)))
+
+        val rows = 9
+        val cols = 9
+        val groundElev = 250f // Flat valley floor
+
+        val grid = ElevationGrid(
+            minLat = centerLat - deltaLat,
+            maxLat = centerLat + deltaLat,
+            minLon = centerLon - deltaLon,
+            maxLon = centerLon + deltaLon,
+            rows = rows,
+            cols = cols,
+            elevations = FloatArray(rows * cols) { groundElev }
+        )
+
+        val pixels = IntArray(rows * cols)
+        val config = ReachabilityConfig(glideRatio = gr, safetyMarginM = safetyMargin, checkLineOfSight = true)
+
+        ReachabilityEngine.computeReachabilityPixels(
+            centerLat, centerLon, pilotAlt, grid, config, pixels
+        )
+
+        // Center must be reachable
+        val centerIdx = (rows / 2) * cols + (cols / 2)
+        assertNotEquals(ReachabilityEngine.COLOR_UNREACH, pixels[centerIdx])
+
+        // ALL perimeter pixels (North, South, East, West borders) MUST be COLOR_UNREACH (transparent).
+        // This confirms that the glide reach is fully contained within the grid, avoiding square edge truncation.
+        for (c in 0 until cols) {
+            assertEquals(ReachabilityEngine.COLOR_UNREACH, pixels[0 * cols + c], "Top edge col $c must be transparent")
+            assertEquals(ReachabilityEngine.COLOR_UNREACH, pixels[(rows - 1) * cols + c], "Bottom edge col $c must be transparent")
+        }
+        for (r in 0 until rows) {
+            assertEquals(ReachabilityEngine.COLOR_UNREACH, pixels[r * cols + 0], "Left edge row $r must be transparent")
+            assertEquals(ReachabilityEngine.COLOR_UNREACH, pixels[r * cols + (cols - 1)], "Right edge row $r must be transparent")
+        }
+    }
 }

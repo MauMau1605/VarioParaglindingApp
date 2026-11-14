@@ -324,7 +324,7 @@ stateDiagram-v2
 - **SpotAir-Style Terrain-Aware Heatmap:**
   - Replaces pure distance circles with a real-time relief-aware reachability raster overlay.
   - Generates a 32×32 sample grid around the pilot (live flight) or departure point (itinerary planning mode).
-  - **Dynamic Delta H Bounding Box:** Computes reachable radius based on local ground clearance $\Delta H = \left(\text{Alt}_{\text{start}} - \text{GroundAlt}_{\text{ref}}\right) \times \text{GlideRatio} \times 1.15$, shrinking calculation area by 10× compared to sea-level valley baselines.
+  - **Full Glide Range Bounding Box (`ReachabilityEngine.computeReachableRadiusM`):** Computes the reachable radius from departure/pilot altitude MSL and wing glide ratio: $R = \Delta H \times \text{GlideRatio} \times 1.15$ (with $\Delta H \ge 100\text{ m}$, bounded in $[1.5\text{ km}, 40\text{ km}]$). Encompassing the full theoretical glide range down to valley floors and sea level guarantees that outer perimeter cells naturally terminate where ground clearance $\le 0\text{ m}$ (transparent), completely preventing artificial square box truncation.
   - Computes exact AGL clearance at every point: $\text{AGL} = \left(\text{Alt}_{\text{start}} - \frac{\text{Distance}}{\text{GlideRatio}}\right) - \text{Elevation}_{\text{terrain}} - \text{Margin}$.
   - **Color Palette (SpotAir-aligned):**
     - $\ge 1200\text{ m AGL}$: Deep Blue (`#801565C0`) — Maximum safety margin
