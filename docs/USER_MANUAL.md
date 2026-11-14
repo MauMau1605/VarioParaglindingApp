@@ -164,12 +164,12 @@ Switch to the **CARTE (MAP)** tab to view real-time situational navigation:
 - Digital Elevation data is cached locally so AGL readouts function reliably even when outside cellular coverage.
 
 ### 4. Zone d'accessibilité : Carte thermique SpotAir & Relief 100% Hors-ligne (SRTM .HGT)
-VarioAppli propose deux modes de visualisation pour évaluer en direct les zones de vol atteignables en plané pur (sans ascendance), configurables via le bouton `📐`, le bouton `⚙ Param.` ou depuis le menu cockpit `[≡ Menu]` :
+VarioAppli propose deux modes de visualisation pour évaluer en direct les zones de vol atteignables en plané pur (sans ascendance), configurables via le bouton `📐`, l'icône `⚙` du bandeau fin de la carte ou depuis le menu cockpit `[≡ Menu]` :
 
 - **🗺️ Carte thermique terrain (Style SpotAir - Recommandé) :**
   - Calcule en temps réel la hauteur exacte au-dessus du sol (AGL) pour chaque point de la carte en projetant la finesse de votre aile sur la topographie 3D.
   - **Fonctionnement 100% Hors-ligne & Téléchargement Multi-Zones (SRTM .HGT) :**
-    - Pour voler sans aucune connexion internet et avec un temps de réponse instantané (< 1 ms), téléchargez en avance (en Wi-Fi avant de partir) les dalles de relief SRTM 1°×1° (~1.5 Mo par dalle).
+    - Pour voler sans aucune connexion internet et avec un temps de réponse instantané (< 1 ms), téléchargez en avance (en Wi-Fi avant de partir) les dalles de relief SRTM 1°×1° (~1.5 Mo par dalle compressée, hébergées sur le miroir CDN haute vitesse Kurviger avec basculement automatique multi-continental).
     - **Téléchargement simultané multi-zones :** Vous pouvez désormais sélectionner et télécharger plusieurs dalles en parallèle simultanément.
     - **Interface cartographique interactive de sélection :**
       - Accessible directement depuis la barre de modes (`[📥 Relief (Multi)]`) ou depuis les paramètres de relief (`"🗺️ Sélectionner des zones sur la carte"`).
@@ -179,12 +179,14 @@ VarioAppli propose deux modes de visualisation pour évaluer en direct les zones
       - Raccourcis en 1 clic : *Zone actuelle*, *Pack Alpes (3 zones)*, ou sélection manuelle de massifs entiers.
       - Touchez **"Télécharger la sélection"** pour lancer le téléchargement simultané de toutes les zones choisies en arrière-plan.
     - **Retour automatique à la carte :** Dès le lancement du téléchargement ou la validation de la sélection, l'application bascule automatiquement sur la zone de carte de vol (`En Vol`), recentre la vue sur le massif sélectionné, et affiche une bannière HUD discrète indiquant la progression du téléchargement simultané.
+    - **Téléchargement unitaire rapide :** Ouvrez les paramètres (`⚙` ou `[≡ Menu] -> ⚙️ Relief & Finesse`), puis touchez **"Télécharger la zone actuelle (ex: N45E006)"**.
     - Des raccourcis en 1 clic permettent également d'installer les massifs majeurs : *Annecy / Chamonix (N45E006)*, *Grenoble / Vercors (N45E005)*, *Alpes du Sud / St-André (N44E006)*, *Pyrénées (N42E000)*, *Vosges / Jura (N47E006)*.
     - Possibilité d'importer vos propres fichiers `.HGT` via le bouton **"Importer un fichier .HGT local"**.
     - La liste des dalles installées avec leur taille est affichée, avec option de suppression pour libérer de l'espace.
     - *Secours en ligne :* Si aucune dalle locale n'est installée, l'application utilise l'API MNT Open-Meteo si le téléphone est connecté au réseau cellulaire.
+  - **Rendu pixélisé SpotAir (Nearest-Neighbor & Grille 40×40) :** L'affichage raster utilise une grille haute résolution 40×40 avec un échantillonnage par pavés/cellules nets sans lissage flou bilinéaire (`isFilterBitmap = false`). Les couleurs ressortent avec force et précision sur le fond de carte, sans bavure sur les zones transparentes.
   - **Couverture intégrale de la portée ($\Delta H$ global) :** Le rayon de la grille de calcul englobe la totalité de la portée de plané jusqu'au fond de vallée ou au niveau de la mer ($R = \Delta H \times \text{Finesse} \times 1.15$). La zone d'atteinte se fond ainsi naturellement dans le relief jusqu'au contact avec le sol, éliminant tout découpage artificiel en carré sur les bords de la carte.
-  - **Ombrage des crêtes (Line-of-Sight) :** Si une montagne ou une crête intermédiaire coupe la pente de descente de l'aile, toute la zone située derrière dans l'ombre du relief est automatiquement masquée (transparente car inaccessible).
+  - **Ombrage des crêtes & Masquage (Line-of-Sight) :** Si une montagne ou une crête intermédiaire coupe la pente de descente de l'aile, les zones situées dans l'ombre du relief ne sont **tout simplement pas colorées** (100% transparentes, considérées comme hors de portée) sans dégradé parasite.
   - **Code couleur progressif SpotAir :**
     - **Bleu foncé ($\ge 1200\text{ m}$ AGL) & Bleu ($800 - 1200\text{ m}$) :** Marge de sécurité maximale, très haute clairance.
     - **Cyan ($500 - 800\text{ m}$ AGL) & Vert ($300 - 500\text{ m}$) :** Marge confortable et sécurisante.
@@ -194,10 +196,10 @@ VarioAppli propose deux modes de visualisation pour évaluer en direct les zones
 - **⭕ Cercle simple (Legacy) :**
   - Affiche un cône radial classique à anneaux concentriques (25% Finesse/4, 50%, 90% et 100% limite).
 
-### 5. Planification d'itinéraires & Calage intelligent du décollage (Rayon 50m)
+### 5. Planification d'itinéraires & Calage intelligent du décollage (Précision 20m × 20m)
 - En mode **PLANIFICATION ITINÉRAIRE**, définissez votre vol :
   - **Point de Départ (Décollage) :** Touchez la carte sur la zone de décollage prévue.
-    - **Calage automatique au sommet (50 m) :** L'application sonde le relief dans un rayon de 50 mètres autour du point touché et cale la référence de vol sur le **point le plus haut (crête / sommet)**. Cela évite de sous-estimer l'altitude de départ si le toucher a atterri dans une dépression ou un ravin. Un message à l'écran confirme l'altitude du sommet retenue.
+    - **Calage automatique au sommet (20 m × 20 m) :** L'application sonde le relief dans une zone resserrée de 20 m × 20 m autour du point touché et cale la référence de vol sur le **point le plus haut (crête / sommet)**. Cela évite de sous-estimer l'altitude de départ si le toucher a atterri dans une dépression ou un ravin. Un message à l'écran confirme l'altitude du sommet retenue.
   - **Étapes intermédiaires (Waypoints) :** Touchez pour ajouter une ou plusieurs balises de contournement.
   - **Point d'Arrivée (Atterrissage) :** Touchez la zone d'atterrissage ciblée.
   - **Inversion de parcours :** Le bouton d'inversion permute départ et arrivée et recalcule immédiatement l'altitude de départ sur le sommet de la nouvelle zone de décollage.

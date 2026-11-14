@@ -33,7 +33,7 @@ import kotlin.math.sqrt
  * - Updates are throttled using dirty-state thresholds (>100m translation, >30m altitude, >0.2 glide ratio).
  */
 class ReachabilityHeatmapOverlay(
-    private val gridSize: Int = 32
+    private val gridSize: Int = 40
 ) : Overlay() {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -44,8 +44,10 @@ class ReachabilityHeatmapOverlay(
     private val pixelBuffer = IntArray(gridSize * gridSize)
     private val matrix = Matrix()
     private val paint = Paint().apply {
-        isFilterBitmap = true
-        isAntiAlias = true
+        // Nearest-neighbor rendering without bilinear smoothing: crisp, discrete SpotAir pixel cells
+        isFilterBitmap = false
+        isAntiAlias = false
+        isDither = false
     }
 
     private val srcPts = floatArrayOf(

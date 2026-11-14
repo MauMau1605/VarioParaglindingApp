@@ -299,7 +299,7 @@ stateDiagram-v2
   - **Automatic Return to Map Area:** Triggering a multi-zone download or validating selection automatically transitions navigation mode back to the primary flight deck (`MapNavigationMode.LIVE_PILOT`) and smoothly recenters the camera onto the target map zone while the concurrent download streams in the background with a floating HUD status banner.
 - **Offline Pre-Flight Caching & Management:**
   - Auto-formatting: maps coordinates to standard filenames (e.g. `(45.92, 6.87)` -> `N45E006.hgt`).
-  - Pre-flight Wi-Fi download: fetches compressed `.hgt.zip` from public mirrors (e.g. ArduPilot SRTM mirror) with HTTP redirect resilience, unzips in background, and registers into `/terrain/` storage.
+  - Pre-flight Wi-Fi download: fetches compressed `.hgt.zip` from high-speed Cloudflare-cached Kurviger SRTM3 mirrors (`https://srtm.kurviger.de/SRTM3/`) with automatic continental fallback cycling (`Eurasia`, `North_America`, `South_America`, `Africa`, `Australia`, `Islands`), unzips in background, and registers into `/terrain/` storage.
   - SAF File Importer: allows importing custom LiDAR or HGT terrain tiles from external storage via Android Storage Access Framework.
   - Storage inspection: returns installed tile inventory with file sizes (`getInstalledTileInfos()`) and enables safe deletion.
 
@@ -313,7 +313,7 @@ stateDiagram-v2
 - **Batch Grid & Summit Queries:**
   - `getElevationBatch(latitudes, longitudes)`: High-efficiency chunked batch fetcher resolving offline HGT points instantly before batching uncached points.
   - `getElevationGrid(centerLat, centerLon, radiusM, gridSize)`: Regular 2D geographic bounding box sampler for reachability heatmaps.
-  - `findPeakElevation(centerLat, centerLon, radiusM = 50f)`: 5×5 circular search grid snapping departure points to the highest local terrain summit within 50 meters using real terrain models.
+  - `findPeakElevation(centerLat, centerLon, radiusM = 20f)`: 5×5 circular/box search grid snapping departure points to the highest local terrain summit within a 20m×20m footprint using real terrain models.
 - **Cockpit Telemetry Feed:** `VarioService` listens to elevation updates (`TerrainElevationProvider.addListener`) and maintains a cached ground elevation reference `currentGroundElevationM`. On every location fix and barometric sentence, `VarioService` emits `estimatedAglM` into `VarioData` for instantaneous, zero-allocation display on the primary flight deck.
 
 ### 3. Obstacle & Airspace Avoidance (`ObstacleRoutingEngine.kt`)
@@ -323,24 +323,25 @@ stateDiagram-v2
 ### 4. SpotAir-Style Terrain Reachability Heatmap & Glide Cone (`ReachabilityEngine.kt`, `ReachabilityHeatmapOverlay.kt`, `GlideOverlay.kt`)
 - **SpotAir-Style Terrain-Aware Heatmap:**
   - Replaces pure distance circles with a real-time relief-aware reachability raster overlay.
-  - Generates a 32×32 sample grid around the pilot (live flight) or departure point (itinerary planning mode).
+  - Generates a 40×40 sample grid around the pilot (live flight) or departure point (itinerary planning mode).
   - **Full Glide Range Bounding Box (`ReachabilityEngine.computeReachableRadiusM`):** Computes the reachable radius from departure/pilot altitude MSL and wing glide ratio: $R = \Delta H \times \text{GlideRatio} \times 1.15$ (with $\Delta H \ge 100\text{ m}$, bounded in $[1.5\text{ km}, 40\text{ km}]$). Encompassing the full theoretical glide range down to valley floors and sea level guarantees that outer perimeter cells naturally terminate where ground clearance $\le 0\text{ m}$ (transparent), completely preventing artificial square box truncation.
   - Computes exact AGL clearance at every point: $\text{AGL} = \left(\text{Alt}_{\text{start}} - \frac{\text{Distance}}{\text{GlideRatio}}\right) - \text{Elevation}_{\text{terrain}} - \text{Margin}$.
   - **Color Palette (SpotAir-aligned):**
-    - $\ge 1200\text{ m AGL}$: Deep Blue (`#801565C0`) — Maximum safety margin
-    - $800 - 1200\text{ m AGL}$: Blue (`#801E88E5`)
-    - $500 - 800\text{ m AGL}$: Cyan / Teal (`#7800ACC1`)
-    - $300 - 500\text{ m AGL}$: Green (`#7043A047`) — Comfortable glide margin
-    - $150 - 300\text{ m AGL}$: Yellow-Green (`#689E9D24`)
-    - $80 - 150\text{ m AGL}$: Yellow (`#60F9A825`) — Caution zone
-    - $50 - 80\text{ m AGL}$: Orange (`#58EF6C00`)
-    - $0 - 50\text{ m AGL}$: Red (`#55C62828`) — Critical reachability limit
-    - $< 0\text{ m}$ (or obstructed): Transparent (`#00000000`)
-  - **Line-of-Sight Terrain Collision (Ridge Shadowing):** Implements radial ray casting from the pilot/departure point to each cell; if an intermediate terrain feature intersects the glide slope, terrain located in the shadow behind the ridge is marked unreachable (transparent).
-  - **Zero-Allocation Rendering Loop:** Renders via an osmdroid `Overlay` subclass using a pre-allocated 32×32 ARGB_8888 `Bitmap`, hardware-accelerated bilinear filtering (`isFilterBitmap = true`), and `Matrix.setPolyToPoly` 4-point quadrilateral mapping, ensuring seamless alignment during map pan, zoom, and orientation rotation with zero GC invocation during redraws.
+    - $\ge 1200\text{ m AGL}$: Deep Blue (`#901565C0`) — Maximum safety margin
+    - $800 - 1200\text{ m AGL}$: Blue (`#901E88E5`)
+    - $500 - 800\text{ m AGL}$: Cyan / Teal (`#8800ACC1`)
+    - $300 - 500\text{ m AGL}$: Green (`#8543A047`) — Comfortable glide margin
+    - $150 - 300\text{ m AGL}$: Yellow-Green (`#859E9D24`)
+    - $80 - 150\text{ m AGL}$: Yellow (`#80F9A825`) — Caution zone
+    - $50 - 80\text{ m AGL}$: Orange (`#80EF6C00`)
+    - $0 - 50\text{ m AGL}$: Red (`#80C62828`) — Critical reachability limit
+    - $< 0\text{ m}$ (or obstructed / masked): Strictly transparent (`#00000000`)
+  - **Line-of-Sight Terrain Collision (Ridge Shadowing & Masking):** Implements radial ray casting from the pilot/departure point to each cell; if an intermediate terrain feature intersects the glide slope, terrain located in the shadow behind the ridge is marked unreachable and left strictly uncolored (100% transparent).
+  - **Nearest-Neighbor Pixelated Rendering (`isFilterBitmap = false`):** Renders via an osmdroid `Overlay` subclass using nearest-neighbor bitmap scaling without bilinear blur, producing sharp, discrete colored raster cells exactly like SpotAir, with zero color bleeding into transparent masked areas.
+  - **Zero-Allocation Rendering Loop:** Pre-allocated 40×40 ARGB_8888 `Bitmap`, IntArray buffers, and `Matrix.setPolyToPoly` 4-point quadrilateral mapping, ensuring seamless alignment during map pan, zoom, and orientation rotation with zero GC invocation during redraws.
   - **Smart Recompute Throttling:** Background recomputations trigger only when position exceeds 100m, altitude exceeds 30m, or glide ratio changes by >0.2.
 - **Legacy Conical Glide Reach Overlay (`GlideOverlay.kt`):** Maintained as an optional alternative mode displaying concentric circles (25%, 50%, 90%, 100%) with radial gradient fills. Toggleable on-the-fly in the settings bottom sheet (`useHeatmapMode`).
-- **Smart Departure Summit Snapping:** In itinerary planning mode, selecting a departure point automatically evaluates surrounding topography within a 50m radius and sets the reference flight altitude based on the local peak rather than an accidental low-lying gully tap.
+- **Smart Departure Summit Snapping:** In itinerary planning mode, selecting a departure point automatically evaluates surrounding topography within a 20m×20m footprint and sets the reference flight altitude based on the local peak rather than an accidental low-lying gully tap.
 
 ### 5. Flight Track & GPX Logger (`GpxTrackManager.kt`)
 - Records 1 Hz timestamped geographic points with barometric altitude and variometer readings.

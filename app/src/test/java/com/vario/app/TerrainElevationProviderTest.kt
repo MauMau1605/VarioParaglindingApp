@@ -56,11 +56,11 @@ class TerrainElevationProviderTest {
         // Put surrounding elevations in cache
         TerrainElevationProvider.putElevationInCache(centerLat, centerLon, 1200f)
 
-        // Put a peak slightly offset (approx 25m north)
-        val peakLat = centerLat + (25.0 / 111139.0)
+        // Put a peak slightly offset (approx 12m north, within 20x20m box)
+        val peakLat = centerLat + (12.0 / 111139.0)
         TerrainElevationProvider.putElevationInCache(peakLat, centerLon, 1485f)
 
-        val peak = TerrainElevationProvider.findPeakElevation(centerLat, centerLon, radiusM = 50f)
+        val peak = TerrainElevationProvider.findPeakElevation(centerLat, centerLon, radiusM = 20f)
         assertTrue(peak >= 1485f, "Peak elevation should be at least the 1485m sample")
     }
 

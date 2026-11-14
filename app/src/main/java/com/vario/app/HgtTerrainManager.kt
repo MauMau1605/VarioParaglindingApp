@@ -277,8 +277,11 @@ object HgtTerrainManager {
         val formattedSize: String
     )
 
+    private val ALL_CONTINENTS = listOf("Eurasia", "North_America", "South_America", "Africa", "Australia", "Islands")
+
     /**
      * Downloads an SRTM3 tile ZIP archive, unzips the .hgt file, and registers it.
+     * Uses Kurviger's high-speed CDN-cached SRTM3 mirror with multi-region fallback.
      */
     suspend fun downloadTile(
         lat: Double,
@@ -294,42 +297,64 @@ object HgtTerrainManager {
             return@withContext Result.success(destHgtFile)
         }
 
-        val continent = getContinentForCoords(lat, lon)
+        val primaryContinent = getContinentForCoords(lat, lon)
         val baseTile = filename.substringBeforeLast(".hgt")
-        val urlStr = "https://firmware.ardupilot.org/SRTM3/$continent/$baseTile.hgt.zip"
+        val candidateContinents = listOf(primaryContinent) + (ALL_CONTINENTS - primaryContinent)
 
-        try {
+        var successfulConn: HttpURLConnection? = null
+
+        // Try primary continent first, then fallbacks if 404
+        for (continent in candidateContinents) {
+            val urlStr = "https://srtm.kurviger.de/SRTM3/$continent/$baseTile.hgt.zip"
             var currentUrl = urlStr
-            var conn: HttpURLConnection?
+            var conn: HttpURLConnection? = null
             var redirects = 0
+            var found = false
 
-            while (true) {
-                val url = URL(currentUrl)
-                conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 10000
-                conn.readTimeout = 20000
-                conn.requestMethod = "GET"
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 VarioAppli/1.0")
-
-                val code = conn.responseCode
-                if (code in 301..303 || code == 307 || code == 308) {
-                    val location = conn.getHeaderField("Location")
-                    conn.disconnect()
-                    if (location != null && redirects < 5) {
-                        currentUrl = location
-                        redirects++
-                        continue
+            try {
+                while (true) {
+                    val url = URL(currentUrl)
+                    conn = (url.openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 10000
+                        readTimeout = 20000
+                        requestMethod = "GET"
+                        setRequestProperty("User-Agent", "Mozilla/5.0 VarioAppli/1.0")
                     }
+
+                    val code = conn.responseCode
+                    if (code in 301..303 || code == 307 || code == 308) {
+                        val location = conn.getHeaderField("Location")
+                        conn.disconnect()
+                        if (location != null && redirects < 5) {
+                            currentUrl = location
+                            redirects++
+                            continue
+                        }
+                    }
+                    if (code == 200) {
+                        found = true
+                    } else {
+                        conn.disconnect()
+                        conn = null
+                    }
+                    break
                 }
+            } catch (_: Exception) {
+                conn?.disconnect()
+                conn = null
+            }
+
+            if (found && conn != null) {
+                successfulConn = conn
                 break
             }
+        }
 
-            val finalConn = conn ?: return@withContext Result.failure(IllegalStateException("Failed to open connection"))
-            if (finalConn.responseCode != 200) {
-                finalConn.disconnect()
-                return@withContext Result.failure(IllegalStateException("HTTP ${finalConn.responseCode} on $currentUrl"))
-            }
+        val finalConn = successfulConn ?: return@withContext Result.failure(
+            java.io.FileNotFoundException("Dalle $baseTile introuvable sur le serveur SRTM (erreur 404)")
+        )
 
+        try {
             val totalBytes = finalConn.contentLength.toFloat()
             val tempZip = File(dir, "$baseTile.tmp.zip")
 
@@ -371,9 +396,10 @@ object HgtTerrainManager {
                 Result.success(destHgtFile)
             } else {
                 destHgtFile.delete()
-                Result.failure(IllegalStateException("Extracted HGT file invalid or incomplete"))
+                Result.failure(IllegalStateException("Fichier HGT extrait incomplet ou corrompu"))
             }
         } catch (e: Exception) {
+            destHgtFile.delete()
             Result.failure(e)
         }
     }

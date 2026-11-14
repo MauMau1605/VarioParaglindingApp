@@ -835,11 +835,11 @@ fun MapScreen(
                                             val ground = TerrainElevationProvider.getElevation(p.latitude, p.longitude)
                                             startAltitudeM = ground + 100f
                                             coroutineScope.launch {
-                                                val peakElev = TerrainElevationProvider.findPeakElevation(p.latitude, p.longitude, 50f)
+                                                val peakElev = TerrainElevationProvider.findPeakElevation(p.latitude, p.longitude, 20f)
                                                 startAltitudeM = peakElev + 100f
                                                 Toast.makeText(
                                                     ctx,
-                                                    "Altitude Départ ajustée au sommet (50m) : ${peakElev.roundToInt()}m (Vol : ${(peakElev + 100f).roundToInt()}m)",
+                                                    "Altitude Départ ajustée au sommet (20x20m) : ${peakElev.roundToInt()}m (Vol : ${(peakElev + 100f).roundToInt()}m)",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
                                             }
@@ -1199,7 +1199,7 @@ fun MapScreen(
                             val ground = TerrainElevationProvider.getElevation(f.latitude, f.longitude)
                             startAltitudeM = ground + 100f
                             coroutineScope.launch {
-                                val peakElev = TerrainElevationProvider.findPeakElevation(f.latitude, f.longitude, 50f)
+                                val peakElev = TerrainElevationProvider.findPeakElevation(f.latitude, f.longitude, 20f)
                                 startAltitudeM = peakElev + 100f
                                 mapViewRef?.invalidate()
                             }
@@ -1683,7 +1683,7 @@ private fun MapTopHudBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 10.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1774,26 +1774,20 @@ private fun MapTopHudBar(
             // Right icons: GPX Tracks & Settings
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                IconButton(onClick = onOpenTracks) {
+                IconButton(
+                    onClick = onOpenTracks,
+                    modifier = Modifier.size(36.dp)
+                ) {
                     Text("📁", fontSize = 16.sp)
                 }
 
-                Surface(
+                IconButton(
                     onClick = onOpenSettings,
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFF1E293B),
-                    border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.7f))
+                    modifier = Modifier.size(36.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text("⚙", fontSize = 13.sp, color = Color(0xFF38BDF8))
-                        Text("Param.", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                    }
+                    Text("⚙", fontSize = 16.sp)
                 }
             }
         }

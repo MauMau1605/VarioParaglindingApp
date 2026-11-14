@@ -329,12 +329,12 @@ object TerrainElevationProvider {
 
     /**
      * Finds the highest terrain elevation within [radiusM] meters around ([centerLat], [centerLon]).
-     * Samples a 5x5 grid around the center, filters points within the circle, and returns the peak elevation.
+     * Samples a 5x5 grid around the center, filters points within the circle/box (20m x 20m), and returns the peak elevation.
      */
     suspend fun findPeakElevation(
         centerLat: Double,
         centerLon: Double,
-        radiusM: Float = 50f
+        radiusM: Float = 20f
     ): Float = withContext(Dispatchers.Default) {
         val cosLat = cos(Math.toRadians(centerLat)).coerceAtLeast(0.01)
         val deltaLat = radiusM / 111139.0

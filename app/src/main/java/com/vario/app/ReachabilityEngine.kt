@@ -28,16 +28,16 @@ data class ReachabilityConfig(
  */
 object ReachabilityEngine {
 
-    // SpotAir-style Color Constants (ARGB format with semi-transparent alpha for map readability)
-    const val COLOR_DEEP_BLUE = 0x801565C0.toInt()   // >= 1200m AGL (Very high clearance)
-    const val COLOR_BLUE      = 0x801E88E5.toInt()   // 800 - 1200m AGL
-    const val COLOR_CYAN      = 0x7800ACC1.toInt()   // 500 - 800m AGL
-    const val COLOR_GREEN     = 0x7043A047.toInt()   // 300 - 500m AGL
-    const val COLOR_YELLOW_GR = 0x689E9D24.toInt()   // 150 - 300m AGL
-    const val COLOR_YELLOW    = 0x60F9A825.toInt()   // 80 - 150m AGL
-    const val COLOR_ORANGE    = 0x58EF6C00.toInt()   // 50 - 80m AGL
-    const val COLOR_RED       = 0x55C62828.toInt()   // 0 - 50m AGL (Critical reachability limit)
-    const val COLOR_UNREACH   = 0x00000000           // Unreachable / obstructed (transparent)
+    // SpotAir-style Color Constants (ARGB format with crisp alpha for discrete raster visibility)
+    const val COLOR_DEEP_BLUE = 0x901565C0.toInt()   // >= 1200m AGL (Very high clearance)
+    const val COLOR_BLUE      = 0x901E88E5.toInt()   // 800 - 1200m AGL
+    const val COLOR_CYAN      = 0x8800ACC1.toInt()   // 500 - 800m AGL
+    const val COLOR_GREEN     = 0x8543A047.toInt()   // 300 - 500m AGL
+    const val COLOR_YELLOW_GR = 0x859E9D24.toInt()   // 150 - 300m AGL
+    const val COLOR_YELLOW    = 0x80F9A825.toInt()   // 80 - 150m AGL
+    const val COLOR_ORANGE    = 0x80EF6C00.toInt()   // 50 - 80m AGL
+    const val COLOR_RED       = 0x80C62828.toInt()   // 0 - 50m AGL (Critical reachability limit)
+    const val COLOR_UNREACH   = 0x00000000           // Unreachable / obstructed / masked (100% transparent)
 
     /**
      * Computes the maximum reachable horizontal radius in meters covering the entire glide range.
@@ -62,10 +62,8 @@ object ReachabilityEngine {
 
         return when {
             aglM < 50f -> {
-                // Smooth ramp in alpha from 0x15 at 0m up to 0x55 at 50m
-                val t = (aglM / 50f).coerceIn(0f, 1f)
-                val alpha = (0x15 + (0x40 * t)).toInt()
-                (alpha shl 24) or (COLOR_RED and 0x00FFFFFF)
+                // Solid, distinct red for reachable terrain near glide limit (0-50m AGL)
+                COLOR_RED
             }
             aglM < 80f -> {
                 lerpColor(COLOR_RED, COLOR_ORANGE, (aglM - 50f) / 30f)
@@ -176,7 +174,7 @@ object ReachabilityEngine {
                     continue
                 }
 
-                // Check line-of-sight terrain collision (ridge shadowing)
+                // Check line-of-sight terrain collision (ridge shadowing / masking)
                 var blocked = false
                 if (config.checkLineOfSight) {
                     val dRow = r - centerR
@@ -184,13 +182,14 @@ object ReachabilityEngine {
                     val steps = maxOf(abs(dRow), abs(dCol))
                     if (steps > 1) {
                         for (s in 1 until steps) {
-                            val stepR = centerR + (dRow * s) / steps
-                            val stepC = centerC + (dCol * s) / steps
+                            val stepR = (centerR + (dRow.toDouble() * s) / steps).toInt().coerceIn(0, rows - 1)
+                            val stepC = (centerC + (dCol.toDouble() * s) / steps).toInt().coerceIn(0, cols - 1)
                             val frac = s.toFloat() / steps
                             val stepDistM = distM * frac
                             val stepGlideAlt = startAltM - (stepDistM / config.glideRatio)
                             val stepTerrain = grid.getElevationAt(stepR, stepC)
-                            if (stepGlideAlt <= stepTerrain + config.safetyMarginM) {
+                            // Physical ridge blockage: glide slope collides with intermediate mountain terrain
+                            if (stepGlideAlt <= stepTerrain) {
                                 blocked = true
                                 break
                             }
@@ -199,6 +198,7 @@ object ReachabilityEngine {
                 }
 
                 if (blocked) {
+                    // Masked terrain is strictly uncolored (treated purely as out of reach)
                     pixelBuffer[rowOffset + c] = COLOR_UNREACH
                 } else {
                     pixelBuffer[rowOffset + c] = aglToColor(rawAglM)
