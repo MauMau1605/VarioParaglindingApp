@@ -463,4 +463,155 @@ class VarioServiceCompanionTest {
         assertEquals(30f, step3.second)
         assertEquals(1040f, step3.third)
     }
+
+    @Test
+    fun accumulatePedestrianDistance_initializesAnchorWithoutIncrementingDistance() {
+        val newLoc = mockk<Location>()
+        val (dist, anchor) = VarioService.accumulatePedestrianDistance(
+            currentTotalM = 500f,
+            anchorLoc = null,
+            newLoc = newLoc
+        )
+        assertEquals(500f, dist)
+        assertEquals(newLoc, anchor)
+    }
+
+    @Test
+    fun accumulatePedestrianDistance_stationaryJitterWithinDeadband_doesNotIncrement() {
+        val anchor = mockk<Location>()
+        val newLoc = mockk<Location>()
+
+        every { anchor.distanceTo(newLoc) } returns 1.2f
+        every { newLoc.hasAccuracy() } returns true
+        every { newLoc.accuracy } returns 5.0f
+        every { newLoc.hasSpeed() } returns true
+        every { newLoc.speed } returns 0.1f // Doppler stationary (< 0.25 m/s)
+        every { anchor.time } returns 1000L
+        every { newLoc.time } returns 2000L
+
+        val (dist, nextAnchor) = VarioService.accumulatePedestrianDistance(
+            currentTotalM = 100f,
+            anchorLoc = anchor,
+            newLoc = newLoc,
+            minDisplacementM = 2.0f
+        )
+
+        assertEquals(100f, dist, "Stationary jitter should not increment distance")
+        assertEquals(anchor, nextAnchor, "Anchor should not advance on jitter")
+    }
+
+    @Test
+    fun accumulatePedestrianDistance_slowWalkingDisplacement_accumulatesAccurately() {
+        val anchor = mockk<Location>()
+        val newLoc = mockk<Location>()
+
+        // Slow hiker walking uphill: 2.5m displacement, Doppler speed 0.5 m/s (1.8 km/h)
+        every { anchor.distanceTo(newLoc) } returns 2.5f
+        every { newLoc.hasAccuracy() } returns true
+        every { newLoc.accuracy } returns 4.0f
+        every { newLoc.hasSpeed() } returns true
+        every { newLoc.speed } returns 0.5f
+        every { anchor.time } returns 1000L
+        every { newLoc.time } returns 5000L // 4 seconds later (0.625 m/s)
+
+        val (dist, nextAnchor) = VarioService.accumulatePedestrianDistance(
+            currentTotalM = 200f,
+            anchorLoc = anchor,
+            newLoc = newLoc,
+            minDisplacementM = 2.0f
+        )
+
+        assertEquals(202.5f, dist, "Slow walking displacement should increment distance")
+        assertEquals(newLoc, nextAnchor, "Anchor should advance to new location")
+    }
+
+    @Test
+    fun accumulatePedestrianDistance_confirmedFastMovement_accumulatesImmediately() {
+        val anchor = mockk<Location>()
+        val newLoc = mockk<Location>()
+
+        // Runner moving at 2.5 m/s (9 km/h), displacement 1.5m
+        every { anchor.distanceTo(newLoc) } returns 1.5f
+        every { newLoc.hasAccuracy() } returns true
+        every { newLoc.accuracy } returns 3.0f
+        every { newLoc.hasSpeed() } returns true
+        every { newLoc.speed } returns 2.5f // Confirmed moving >= 0.8 m/s
+        every { anchor.time } returns 1000L
+        every { newLoc.time } returns 2000L
+
+        val (dist, nextAnchor) = VarioService.accumulatePedestrianDistance(
+            currentTotalM = 300f,
+            anchorLoc = anchor,
+            newLoc = newLoc,
+            minDisplacementM = 2.0f
+        )
+
+        assertEquals(301.5f, dist)
+        assertEquals(newLoc, nextAnchor)
+    }
+
+    @Test
+    fun accumulatePedestrianDistance_inaccurateFix_rejected() {
+        val anchor = mockk<Location>()
+        val newLoc = mockk<Location>()
+
+        every { newLoc.hasAccuracy() } returns true
+        every { newLoc.accuracy } returns 45.0f // Degraded accuracy > 30m
+
+        val (dist, nextAnchor) = VarioService.accumulatePedestrianDistance(
+            currentTotalM = 400f,
+            anchorLoc = anchor,
+            newLoc = newLoc,
+            maxAccuracyM = 30.0f
+        )
+
+        assertEquals(400f, dist, "Degraded fix should be rejected")
+        assertEquals(anchor, nextAnchor)
+    }
+
+    @Test
+    fun accumulatePedestrianDistance_teleportationGlitch_rejected() {
+        val anchor = mockk<Location>()
+        val newLoc = mockk<Location>()
+
+        // Multipath leap: 100m jump in 1 second (100 m/s > 30 m/s max)
+        every { anchor.distanceTo(newLoc) } returns 100.0f
+        every { newLoc.hasAccuracy() } returns true
+        every { newLoc.accuracy } returns 5.0f
+        every { newLoc.hasSpeed() } returns true
+        every { newLoc.speed } returns 2.0f
+        every { anchor.time } returns 1000L
+        every { newLoc.time } returns 2000L // dt = 1.0s
+
+        val (dist, nextAnchor) = VarioService.accumulatePedestrianDistance(
+            currentTotalM = 500f,
+            anchorLoc = anchor,
+            newLoc = newLoc,
+            maxPhysicalSpeedMs = 30.0f
+        )
+
+        assertEquals(500f, dist, "Teleportation leap should be rejected")
+        assertEquals(anchor, nextAnchor)
+    }
+
+    @Test
+    fun gpsElevationHysteresis_eliminatesStationaryRatchet() {
+        val tracker = ElevationHysteresisTracker(hysteresisThresholdM = 2.5f)
+        tracker.reset(1200f)
+
+        // Alternating GPS noise within ±1.5m around 1200m
+        val noisyGps = listOf(1201.2f, 1198.8f, 1201.5f, 1199.1f, 1201.0f, 1199.5f, 1200.8f)
+        for (alt in noisyGps) {
+            tracker.update(alt)
+        }
+
+        // Must remain exactly 0m D+ and 0m D-
+        assertEquals(0f, tracker.cumulativeGainM, "GPS stationary noise must not inflate D+")
+        assertEquals(0f, tracker.cumulativeLossM, "GPS stationary noise must not inflate D-")
+
+        // Genuine climb exceeding hysteresis: 1200 -> 1220m (+20m)
+        tracker.update(1220f)
+        assertEquals(20f, tracker.cumulativeGainM)
+        assertEquals(0f, tracker.cumulativeLossM)
+    }
 }

@@ -421,12 +421,31 @@ stateDiagram-v2
   - Resumed via `ACTION_RESUME_FLIGHT` (or transition to flight via `ACTION_PROCEED_TO_FLY`).
 - **Fast-Path Integrity:** Zero objects, lambdas, or threads are created or destroyed during pause, resume, or phase transitions.
 
-### Cumulative Elevation Gain (D+) & Loss (D-) Filters
-Barometric pressure sensor noise or altitude jitter (~0.1 to 0.5 m) can artificially inflate cumulative elevation metrics over long sessions. To ensure clinical accuracy, `VarioService` employs noise-gated math:
-- `computeElevationLoss(currentLoss, lastAlt, newAlt, noiseThresholdM = 1.0f)`
-- `computeElevationChanges(currentGain, currentLoss, lastAlt, newAlt, noiseThresholdM = 1.0f)`
-- If $|Alt_{current} - Alt_{last}| \ge 1.0\text{ m}$, positive deltas increment $D^+$ and negative deltas increment $D^-$, advancing $Alt_{last}$.
-- Altitude jitter below the $1.0\text{ m}$ threshold is rejected.
+### Cumulative Elevation Gain (D+) & Loss (D-) Filters & Noise-Immune GPS Odometer
+
+Sensor noise, step bounce, and GPS multipath drift (~0.5 to 4.0 m) can artificially inflate cumulative elevation metrics ($D^+/D^-$) and odometer distance over long hiking, running, or ski touring sessions. To achieve clinical accuracy without impacting battery life, `VarioService` employs a decoupled dual-regime architecture:
+
+#### 1. In Flight with Barometer (`isUsbConnected && sessionPhase == SessionPhase.FLYING`)
+- **Direct Fast-Path Processing:** 10 Hz LK8EX1 barometric telemetry from the Bosch BMP390 sensor is processed with 0 heap allocations.
+- **Flight Elevation Stats:** Evaluated via `updateElevationAndStats(calculatedAlt, vz)` with the standard $1.0\text{ m}$ noise gate (`computeElevationChanges`), preserving immediate acoustic and telemetry response when centering thermals.
+- **Flight Distance:** Accumulated directly along the flight path using straight-line segment updates.
+
+#### 2. GPS-Only Mode & Pedestrian Phase (HIKING, RUNNING, SKI_TOURING, or HIKE Ascent)
+- **Multi-Stage Altitude Filtering (`AltitudeFilterPipeline.processGps`):**
+  1. *Slew-Rate Limiter:* Clamps vertical acceleration spikes caused by GPS multipath leaps (limited to $3.0\text{ m/s}$ for hike/ski, $4.5\text{ m/s}$ for running).
+  2. *Kalman Filter Fusion:* Continuous-discrete state-space estimator smoothing altitude and vertical velocity.
+  3. *Pedestrian EMA Damping:* Post-filter with $\alpha = 0.15$ to $0.25$ damping mechanical footstep step-bounce.
+  4. *Stationary Clamp:* Forces $V_z = 0\text{ m/s}$ whenever Doppler ground speed drops below $0.5\text{ m/s}$.
+- **Noise-Immune $D^+/D^-$ Accumulation (`ElevationHysteresisTracker`):**
+  - Uses a Peak-to-Valley Reversal Schmitt Trigger (Preisach hysteresis deadband, threshold $= 2.5\text{ m}$).
+  - Strictly eliminates the stationary ratchet failure: for any noise oscillation bounded by amplitude $< 2.5\text{ m}$, accumulated $D^+$ and $D^-$ are strictly $0.0\text{ m}$.
+  - Operates in $O(1)$ strictly on primitive scalar floats with **0 dynamic heap allocations**.
+- **Noise-Immune Distance Odometer (`accumulatePedestrianDistance` / `updatePedestrianDistance`):**
+  - *Anchor-based Deadband Displacement:* Distance only increments when displacement from the committed reference anchor exceeds $\ge 2.0\text{ m}$ (or when Doppler speed confirms active movement $\ge 0.8\text{ m/s} \approx 3\text{ km/h}$). When walking slowly uphill ($0.5\text{ m/s}$), small steps accumulate until the $2.0\text{ m}$ threshold is crossed, preserving 100% of true distance while eliminating phantom distance when stationary.
+  - *Doppler Stationary Gating:* When GPS Doppler speed is reported $< 0.25\text{ m/s}$ ($\approx 0.9\text{ km/h}$), the device is recognized as stationary, preventing any distance accumulation regardless of position jitter.
+  - *Accuracy Gate:* Fixes with horizontal accuracy $> 30\text{ m}$ are rejected.
+  - *Glitch Protection:* Impossible teleportation leaps exceeding $30\text{ m/s}$ ($108\text{ km/h}$) are rejected.
+  - *Anchor Pinning for GPX Recording:* In pedestrian mode, stationary fixes are clamped to the reference anchor, preventing messy spiderweb trails on the map and zero-distance inflation in historical GPX analysis (`splitHikeAndFlyMetrics`).
 
 ### Cockpit Adaptive Views & Interactive Telemetry
 - **Hike Telemetry Phase (`isHikeVisualLayout`):**
