@@ -462,5 +462,17 @@ class MapAndTrackTest {
         val waypoints = GpxTrackManager.loadTrackWaypoints(emptyFile)
         assertThat(waypoints).isEmpty()
     }
+
+    @Test
+    fun testGlideSettingsDefaultsWithoutLegacyHeatmapToggle() {
+        val settings = GlideSettings()
+        assertThat(settings.glideRatio).isEqualTo(8.5f)
+        assertThat(settings.isGlideAreaEnabled).isTrue()
+        assertThat(settings.safetyMarginM).isEqualTo(50f)
+
+        val updated = settings.copy(glideRatio = 9.2f, isGlideAreaEnabled = false)
+        assertThat(updated.glideRatio).isEqualTo(9.2f)
+        assertThat(updated.isGlideAreaEnabled).isFalse()
+    }
 }
 

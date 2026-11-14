@@ -164,15 +164,15 @@ Switch to the **CARTE (MAP)** tab to view real-time situational navigation:
 - Digital Elevation data is cached locally so AGL readouts function reliably even when outside cellular coverage.
 
 ### 4. Zone d'accessibilité : Carte thermique SpotAir & Relief 100% Hors-ligne (SRTM .HGT)
-VarioAppli propose deux modes de visualisation pour évaluer en direct les zones de vol atteignables en plané pur (sans ascendance), configurables via le bouton `📐`, l'icône `⚙` du bandeau fin de la carte ou depuis le menu cockpit `[≡ Menu]` :
+VarioAppli intègre une carte thermique haute précision de style SpotAir pour évaluer en direct les zones de vol atteignables en plané pur (sans ascendance), activable via le bouton flottant `📐`, l'icône `⚙` de la carte ou depuis le menu cockpit `[≡ Menu] -> ⚙️ Relief & Finesse` :
 
-- **🗺️ Carte thermique terrain (Style SpotAir - Recommandé) :**
+- **🗺️ Carte thermique terrain (Style SpotAir) :**
   - Calcule en temps réel la hauteur exacte au-dessus du sol (AGL) pour chaque point de la carte en projetant la finesse de votre aile sur la topographie 3D.
   - **Fonctionnement 100% Hors-ligne & Téléchargement Multi-Zones (SRTM .HGT) :**
     - Pour voler sans aucune connexion internet et avec un temps de réponse instantané (< 1 ms), téléchargez en avance (en Wi-Fi avant de partir) les dalles de relief SRTM 1°×1° (~1.5 Mo par dalle compressée, hébergées sur le miroir CDN haute vitesse Kurviger avec basculement automatique multi-continental).
     - **Téléchargement simultané multi-zones :** Vous pouvez désormais sélectionner et télécharger plusieurs dalles en parallèle simultanément.
     - **Interface cartographique interactive de sélection :**
-      - Accessible directement depuis la barre de modes (`[📥 Relief (Multi)]`) ou depuis les paramètres de relief (`"🗺️ Sélectionner des zones sur la carte"`).
+      - Accessible depuis le menu des paramètres (`⚙` ou `[≡ Menu] -> ⚙️ Relief & Finesse` via le bouton **"Sélectionner les reliefs sur la carte (Multi-zones)"**). La barre supérieure de la carte reste épurée et dédiée au vol (`🪂 En Vol (Direct)` et `🗺 Itinéraire`).
       - Affiche une grille géographique 1°×1° interactive par-dessus le fond de carte.
       - **Codes couleur en direct :** Vert émeraude (`✓ Installé`), Bleu cyan vif (`📥 Sélectionné`), et Ardoise translucide (`+ Toucher`).
       - Touchez simplement n'importe quelle dalle sur la carte pour l'ajouter ou la retirer de la sélection.
@@ -193,8 +193,6 @@ VarioAppli propose deux modes de visualisation pour évaluer en direct les zones
     - **Jaune ($80 - 150\text{ m}$ AGL) :** Prudence, hauteur sol réduite.
     - **Orange & Rouge ($< 80\text{ m}$ AGL) :** Limite critique d'atteignabilité (contact sol imminent).
     - **Transparent :** Inaccessible (relief trop haut ou masqué par un obstacle).
-- **⭕ Cercle simple (Legacy) :**
-  - Affiche un cône radial classique à anneaux concentriques (25% Finesse/4, 50%, 90% et 100% limite).
 
 ### 5. Planification d'itinéraires & Calage intelligent du décollage (Précision 20m × 20m)
 - En mode **PLANIFICATION ITINÉRAIRE**, définissez votre vol :

@@ -167,6 +167,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             VarioCockpitTheme {
                 var currentTab by remember { mutableStateOf(CockpitTab.VARIO) }
+                var initialMapNavMode by remember { mutableStateOf(MapNavigationMode.LIVE_PILOT) }
                 val varioData by VarioService.dataFlow.collectAsStateWithLifecycle()
 
                 when (currentTab) {
@@ -186,14 +187,25 @@ class MainActivity : ComponentActivity() {
                             onSetBaudRate = { setBaudRate(it) },
                             onTestAudio = { testAudio(it) },
                             onStopAudioTest = { stopAudioTest() },
-                            onOpenMap = { currentTab = CockpitTab.MAP },
+                            onOpenMap = {
+                                initialMapNavMode = MapNavigationMode.LIVE_PILOT
+                                currentTab = CockpitTab.MAP
+                            },
+                            onOpenMapWithMode = { mode ->
+                                initialMapNavMode = mode
+                                currentTab = CockpitTab.MAP
+                            },
                             onOpenStats = { currentTab = CockpitTab.STATS }
                         )
                     }
                     CockpitTab.MAP -> {
                         MapScreen(
                             varioData = varioData,
-                            onBackToVario = { currentTab = CockpitTab.VARIO }
+                            initialNavMode = initialMapNavMode,
+                            onBackToVario = {
+                                initialMapNavMode = MapNavigationMode.LIVE_PILOT
+                                currentTab = CockpitTab.VARIO
+                            }
                         )
                     }
                     CockpitTab.STATS -> {
@@ -405,6 +417,7 @@ private fun VarioScreen(
     onTestAudio: (Float) -> Unit,
     onStopAudioTest: () -> Unit,
     onOpenMap: () -> Unit,
+    onOpenMapWithMode: (MapNavigationMode) -> Unit = { onOpenMap() },
     onOpenStats: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1527,7 +1540,7 @@ private fun VarioScreen(
                 currentLon = if (varioData.longitude != 0.0) varioData.longitude else 6.87,
                 onOpenZoneMapSelector = {
                     showGlideSettingsSheet = false
-                    onOpenMap()
+                    onOpenMapWithMode(MapNavigationMode.ZONE_DOWNLOAD)
                 }
             )
         }

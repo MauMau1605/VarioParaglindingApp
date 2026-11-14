@@ -36,7 +36,7 @@ flowchart TD
         MainActivity["MainActivity Cockpit<br/>(Dual Tab: Vario & Map)"]
         LadderGauge["Dynamic Ladder Gauge<br/>& Digital Vz Readout"]
         MapScreen["MapScreen (osmdroid)<br/>(Moving Glider, Thermal Trail)"]
-        NavSubsystem["TerrainElevationProvider (AGL)<br/>ObstacleRoutingEngine (Clearance)<br/>GlideOverlay (Glide Cone Reach)"]
+        NavSubsystem["TerrainElevationProvider (AGL)<br/>ObstacleRoutingEngine (Clearance)<br/>ReachabilityHeatmapOverlay (SpotAir Reach)"]
         GpxManager["GpxTrackManager<br/>(GPX Flight Log Recorder)"]
         DebugModal["DebugModal<br/>(LK8EX1 Inspector, NMEA Log, Audio Tone Test)"]
     end
@@ -293,10 +293,11 @@ stateDiagram-v2
   - `downloadMultipleTiles(tileNames, onTileProgress, onOverallProgress)`: Concurrently downloads multiple selected 1°×1° SRTM terrain tiles simultaneously using Kotlin Coroutines `async(Dispatchers.IO)`. Each download safely streams to an isolated temporary archive before unzipping, ensuring thread safety and HTTP redirect resilience.
   - Coordinate extraction (`parseTileCoordinates(tileName)`) and bounding box computation (`getTileBounds(tileName)`).
   - Real-time aggregate progress reporting combining individual chunk downloads with atomic completion counters.
-- **Interactive Cartographic Selection & Automatic Return:**
+- **Interactive Cartographic Selection & Menu Activation:**
   - `ZoneGridOverlay`: High-performance OsmDroid overlay superimposing the 1°×1° SRTM grid directly over vector/satellite maps with pre-allocated native Android Paint objects (0 heap allocation in `draw`). Color-coded states: Emerald Green for installed tiles, Sky Blue for selected tiles, and Translucent Slate for available tiles.
   - Interactive tap detection toggles selection of individual 1°×1° geographic cells.
-  - **Automatic Return to Map Area:** Triggering a multi-zone download or validating selection automatically transitions navigation mode back to the primary flight deck (`MapNavigationMode.LIVE_PILOT`) and smoothly recenters the camera onto the target map zone while the concurrent download streams in the background with a floating HUD status banner.
+  - **Menu-Driven Activation:** Launched cleanly from the "Relief & Finesse" settings sheet (`GlideSettingsBottomSheet`) via `"Sélectionner les reliefs sur la carte (Multi-zones)"`, keeping the primary map display focused exclusively on in-flight and itinerary navigation (`MapModeSwitcherBar`: `[🪂 En Vol (Direct)]` and `[🗺 Itinéraire]`).
+  - **Automatic Return to Map Area:** Triggering a multi-zone download or dismissing selection automatically transitions navigation mode back to the primary flight deck (`MapNavigationMode.LIVE_PILOT`) and smoothly recenters the camera onto the target map zone while the concurrent download streams in the background with a floating HUD status banner.
 - **Offline Pre-Flight Caching & Management:**
   - Auto-formatting: maps coordinates to standard filenames (e.g. `(45.92, 6.87)` -> `N45E006.hgt`).
   - Pre-flight Wi-Fi download: fetches compressed `.hgt.zip` from high-speed Cloudflare-cached Kurviger SRTM3 mirrors (`https://srtm.kurviger.de/SRTM3/`) with automatic continental fallback cycling (`Eurasia`, `North_America`, `South_America`, `Africa`, `Australia`, `Islands`), unzips in background, and registers into `/terrain/` storage.
@@ -320,7 +321,7 @@ stateDiagram-v2
 - Maintains geographic definitions of high-risk mountain obstacles (cables, power lines, alpine peaks, restricted airspaces).
 - Implements waypoint navigation algorithms computing direct distance, required glide ratio ($L/D$), and avoidance paths when direct vectors intersect obstacle hazard radii.
 
-### 4. SpotAir-Style Terrain Reachability Heatmap & Glide Cone (`ReachabilityEngine.kt`, `ReachabilityHeatmapOverlay.kt`, `GlideOverlay.kt`)
+### 4. SpotAir-Style Terrain Reachability Heatmap & Glide Reach (`ReachabilityEngine.kt`, `ReachabilityHeatmapOverlay.kt`, `GlideSettings.kt`)
 - **SpotAir-Style Terrain-Aware Heatmap:**
   - Replaces pure distance circles with a real-time relief-aware reachability raster overlay.
   - Generates a 40×40 sample grid around the pilot (live flight) or departure point (itinerary planning mode).
@@ -340,7 +341,7 @@ stateDiagram-v2
   - **Nearest-Neighbor Pixelated Rendering (`isFilterBitmap = false`):** Renders via an osmdroid `Overlay` subclass using nearest-neighbor bitmap scaling without bilinear blur, producing sharp, discrete colored raster cells exactly like SpotAir, with zero color bleeding into transparent masked areas.
   - **Zero-Allocation Rendering Loop:** Pre-allocated 40×40 ARGB_8888 `Bitmap`, IntArray buffers, and `Matrix.setPolyToPoly` 4-point quadrilateral mapping, ensuring seamless alignment during map pan, zoom, and orientation rotation with zero GC invocation during redraws.
   - **Smart Recompute Throttling:** Background recomputations trigger only when position exceeds 100m, altitude exceeds 30m, or glide ratio changes by >0.2.
-- **Legacy Conical Glide Reach Overlay (`GlideOverlay.kt`):** Maintained as an optional alternative mode displaying concentric circles (25%, 50%, 90%, 100%) with radial gradient fills. Toggleable on-the-fly in the settings bottom sheet (`useHeatmapMode`).
+- **Unified Reachability & Removal of Legacy Radial Circle:** Reachability display is exclusively powered by the high-performance terrain-aware raster heatmap (`ReachabilityHeatmapOverlay`). The legacy concentric simple circle (`GlideOverlay`) has been decommissioned, streamlining both the UI settings menu and rendering pipeline.
 - **Smart Departure Summit Snapping:** In itinerary planning mode, selecting a departure point automatically evaluates surrounding topography within a 20m×20m footprint and sets the reference flight altitude based on the local peak rather than an accidental low-lying gully tap.
 
 ### 5. Flight Track & GPX Logger (`GpxTrackManager.kt`)

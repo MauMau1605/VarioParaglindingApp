@@ -482,6 +482,7 @@ class ZoneGridOverlay(
 fun MapScreen(
     varioData: VarioData,
     onBackToVario: () -> Unit,
+    initialNavMode: MapNavigationMode = MapNavigationMode.LIVE_PILOT,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -492,7 +493,7 @@ fun MapScreen(
     var activeBasemap by remember { mutableStateOf(BasemapRegistry.getActiveProvider(context)) }
 
     // Navigation mode
-    var navMode by remember { mutableStateOf(MapNavigationMode.LIVE_PILOT) }
+    var navMode by remember { mutableStateOf(initialNavMode) }
     var planningAction by remember { mutableStateOf(PlanningAction.SET_START) }
 
     // Live Pilot mode state
@@ -534,7 +535,6 @@ fun MapScreen(
 
     // References to map objects
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
-    val glideOverlay = remember { GlideOverlay() }
     val heatmapOverlay = remember { ReachabilityHeatmapOverlay() }
     val zoneGridOverlay = remember {
         ZoneGridOverlay(
@@ -888,7 +888,6 @@ fun MapScreen(
 
                     overlays.add(MapEventsOverlay(mapEventsReceiver))
                     overlays.add(heatmapOverlay)
-                    overlays.add(glideOverlay)
                     overlays.add(zoneGridOverlay)
                     overlays.add(pastTrackPolyline)
                     overlays.add(liveTrackPolyline)
@@ -931,22 +930,13 @@ fun MapScreen(
                                 TerrainElevationProvider.getElevation(varioData.latitude, varioData.longitude)
                             )
                         }
-                        val showHeatmap = glideSettings.isGlideAreaEnabled && glideSettings.useHeatmapMode
-                        val showCircle = glideSettings.isGlideAreaEnabled && !glideSettings.useHeatmapMode
 
-                        glideOverlay.updateState(
-                            position = pilotGeo,
-                            altM = varioData.altitudeM,
-                            groundAltM = groundRefAlt,
-                            gr = glideSettings.glideRatio,
-                            enabled = showCircle
-                        )
                         heatmapOverlay.updateState(
                             position = pilotGeo,
                             altM = varioData.altitudeM,
                             gr = glideSettings.glideRatio,
                             safetyMargin = glideSettings.safetyMarginM,
-                            enabled = showHeatmap,
+                            enabled = glideSettings.isGlideAreaEnabled,
                             groundAltM = groundRefAlt,
                             mapView = mapView
                         )
@@ -1025,33 +1015,17 @@ fun MapScreen(
                                 TerrainElevationProvider.getElevation(sp.latitude, sp.longitude)
                             )
                         }
-                        val showHeatmap = glideSettings.isGlideAreaEnabled && glideSettings.useHeatmapMode
-                        val showCircle = glideSettings.isGlideAreaEnabled && !glideSettings.useHeatmapMode
 
-                        glideOverlay.updateState(
-                            position = sp,
-                            altM = startAltitudeM,
-                            groundAltM = groundRefAlt,
-                            gr = glideSettings.glideRatio,
-                            enabled = showCircle
-                        )
                         heatmapOverlay.updateState(
                             position = sp,
                             altM = startAltitudeM,
                             gr = glideSettings.glideRatio,
                             safetyMargin = glideSettings.safetyMarginM,
-                            enabled = showHeatmap,
+                            enabled = glideSettings.isGlideAreaEnabled,
                             groundAltM = groundRefAlt,
                             mapView = mapView
                         )
                     } else {
-                        glideOverlay.updateState(
-                            position = GeoPoint(0.0, 0.0),
-                            altM = 0f,
-                            groundAltM = 0f,
-                            gr = glideSettings.glideRatio,
-                            enabled = false
-                        )
                         heatmapOverlay.updateState(
                             position = null,
                             altM = 0f,
@@ -1173,14 +1147,16 @@ fun MapScreen(
                 onOpenTracks = { showTracksSheet = true }
             )
 
-            MapModeSwitcherBar(
-                navMode = navMode,
-                onSelectMode = { newMode ->
-                    navMode = newMode
-                    mapViewRef?.invalidate()
-                },
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
+            if (navMode != MapNavigationMode.ZONE_DOWNLOAD) {
+                MapModeSwitcherBar(
+                    navMode = navMode,
+                    onSelectMode = { newMode ->
+                        navMode = newMode
+                        mapViewRef?.invalidate()
+                    },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+            }
 
             if (navMode == MapNavigationMode.PLANNING_ITINERARY) {
                 PlanningActionBar(
@@ -1982,21 +1958,6 @@ private fun MapModeSwitcherBar(
                     color = if (navMode == MapNavigationMode.PLANNING_ITINERARY) Color.White else Color(0xFF94A3B8)
                 )
             }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (navMode == MapNavigationMode.ZONE_DOWNLOAD) Color(0xFF0284C7) else Color.Transparent)
-                    .clickable { onSelectMode(MapNavigationMode.ZONE_DOWNLOAD) }
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = "📥 Relief (Multi)",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (navMode == MapNavigationMode.ZONE_DOWNLOAD) Color.White else Color(0xFF94A3B8)
-                )
-            }
         }
     }
 }
@@ -2693,7 +2654,6 @@ fun GlideSettingsBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var glideRatio by remember { mutableFloatStateOf(currentSettings.glideRatio) }
     var glideEnabled by remember { mutableStateOf(currentSettings.isGlideAreaEnabled) }
-    var useHeatmap by remember { mutableStateOf(currentSettings.useHeatmapMode) }
     val availableBasemaps = remember { BasemapRegistry.getAvailableProviders() }
 
     // Offline SRTM Terrain state
@@ -2815,7 +2775,7 @@ fun GlideSettingsBottomSheet(
                                     )
                                     .clickable {
                                         glideRatio = preset.ratio
-                                        onUpdateSettings(currentSettings.copy(glideRatio = preset.ratio, isGlideAreaEnabled = glideEnabled, useHeatmapMode = useHeatmap))
+                                        onUpdateSettings(currentSettings.copy(glideRatio = preset.ratio, isGlideAreaEnabled = glideEnabled))
                                     }
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
@@ -2841,7 +2801,7 @@ fun GlideSettingsBottomSheet(
                         value = glideRatio,
                         onValueChange = {
                             glideRatio = (it * 10f).roundToInt() / 10f
-                            onUpdateSettings(currentSettings.copy(glideRatio = glideRatio, isGlideAreaEnabled = glideEnabled, useHeatmapMode = useHeatmap))
+                            onUpdateSettings(currentSettings.copy(glideRatio = glideRatio, isGlideAreaEnabled = glideEnabled))
                         },
                         valueRange = 4.0f..14.0f,
                         steps = 99,
@@ -2868,7 +2828,7 @@ fun GlideSettingsBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = if (useHeatmap) "Légende Carte thermique SpotAir (Hauteur / Sol) :" else "Légende du gradient de difficulté :",
+                        text = "Légende Carte thermique SpotAir (Hauteur / Sol) :",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White
@@ -2882,49 +2842,31 @@ fun GlideSettingsBottomSheet(
                             .clip(RoundedCornerShape(4.dp))
                             .background(
                                 Brush.horizontalGradient(
-                                    if (useHeatmap) {
-                                        listOf(
-                                            Color(0xFF1565C0), // Bleu foncé (>1200m)
-                                            Color(0xFF1E88E5), // Bleu
-                                            Color(0xFF00ACC1), // Cyan
-                                            Color(0xFF43A047), // Vert
-                                            Color(0xFF9E9D24), // Jaune-vert
-                                            Color(0xFFF9A825), // Jaune
-                                            Color(0xFFEF6C00), // Orange
-                                            Color(0xFFC62828)  // Rouge (<50m)
-                                        )
-                                    } else {
-                                        listOf(
-                                            Color(0xFF22C55E),
-                                            Color(0xFF84CC16),
-                                            Color(0xFFEAB308),
-                                            Color(0xFFF97316),
-                                            Color(0xFFEF4444)
-                                        )
-                                    }
+                                    listOf(
+                                        Color(0xFF1565C0), // Bleu foncé (>1200m)
+                                        Color(0xFF1E88E5), // Bleu
+                                        Color(0xFF00ACC1), // Cyan
+                                        Color(0xFF43A047), // Vert
+                                        Color(0xFF9E9D24), // Jaune-vert
+                                        Color(0xFFF9A825), // Jaune
+                                        Color(0xFFEF6C00), // Orange
+                                        Color(0xFFC62828)  // Rouge (<50m)
+                                    )
                                 )
                             )
                     )
 
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (useHeatmap) {
-                            LegendBullet(color = Color(0xFF1E88E5), text = "Bleu : AGL > 800m (Marge très confortable)")
-                            LegendBullet(color = Color(0xFF43A047), text = "Vert : AGL 300–500m (Marge confortable)")
-                            LegendBullet(color = Color(0xFFF9A825), text = "Jaune : AGL 80–150m (Prudence)")
-                            LegendBullet(color = Color(0xFFC62828), text = "Orange / Rouge : AGL < 80m (Zone critique, finesse max)")
-                            LegendBullet(color = Color(0xFF38BDF8), text = "⛰ Ombrage relief : Crêtes bloquantes et masquage direct")
-                        } else {
-                            LegendBullet(color = Color(0xFF22C55E), text = "Vert : Finesse requise ≤ Finesse / 4 (Marge maximale x4)")
-                            LegendBullet(color = Color(0xFFEAB308), text = "Jaune : Finesse requise ~ 50%")
-                            LegendBullet(color = Color(0xFFF97316), text = "Orange : Finesse requise ~ 75%")
-                            LegendBullet(color = Color(0xFFEF4444), text = "Rouge : Limite de finesse (dans les 10% de la portée max)")
-                            LegendBullet(color = Color(0xFF38BDF8), text = "⛰ Calcul tenant compte du dénivelé du relief")
-                        }
+                        LegendBullet(color = Color(0xFF1E88E5), text = "Bleu : AGL > 800m (Marge très confortable)")
+                        LegendBullet(color = Color(0xFF43A047), text = "Vert : AGL 300–500m (Marge confortable)")
+                        LegendBullet(color = Color(0xFFF9A825), text = "Jaune : AGL 80–150m (Prudence)")
+                        LegendBullet(color = Color(0xFFC62828), text = "Orange / Rouge : AGL < 80m (Zone critique, finesse max)")
+                        LegendBullet(color = Color(0xFF38BDF8), text = "⛰ Ombrage relief : Crêtes bloquantes et masquage direct")
                     }
                 }
             }
 
-            // ── Section: Reachable Glide Area Toggle & Mode Selector ────────
+            // ── Section: Reachable Glide Area Toggle ────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2947,86 +2889,13 @@ fun GlideSettingsBottomSheet(
                     checked = glideEnabled,
                     onCheckedChange = {
                         glideEnabled = it
-                        onUpdateSettings(currentSettings.copy(isGlideAreaEnabled = it, glideRatio = glideRatio, useHeatmapMode = useHeatmap))
+                        onUpdateSettings(currentSettings.copy(isGlideAreaEnabled = it, glideRatio = glideRatio))
                     },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color(0xFF4ADE80),
                         checkedTrackColor = Color(0xFF166534)
                     )
                 )
-            }
-
-            if (glideEnabled) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // SpotAir Heatmap mode
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (useHeatmap) Color(0xFF166534) else Color(0xFF1E293B))
-                            .border(
-                                1.dp,
-                                if (useHeatmap) Color(0xFF4ADE80) else Color(0xFF334155),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable {
-                                useHeatmap = true
-                                onUpdateSettings(currentSettings.copy(isGlideAreaEnabled = glideEnabled, glideRatio = glideRatio, useHeatmapMode = true))
-                            }
-                            .padding(vertical = 10.dp, horizontal = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "🗺️ Carte thermique",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (useHeatmap) Color(0xFF86EFAC) else Color(0xFFCBD5E1)
-                            )
-                            Text(
-                                text = "SpotAir (Relief & AGL)",
-                                fontSize = 10.sp,
-                                color = if (useHeatmap) Color(0xFF4ADE80) else Color(0xFF94A3B8)
-                            )
-                        }
-                    }
-
-                    // Classic Circle mode
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (!useHeatmap) Color(0xFF166534) else Color(0xFF1E293B))
-                            .border(
-                                1.dp,
-                                if (!useHeatmap) Color(0xFF4ADE80) else Color(0xFF334155),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable {
-                                useHeatmap = false
-                                onUpdateSettings(currentSettings.copy(isGlideAreaEnabled = glideEnabled, glideRatio = glideRatio, useHeatmapMode = false))
-                            }
-                            .padding(vertical = 10.dp, horizontal = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "⭕ Cercle simple",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (!useHeatmap) Color(0xFF86EFAC) else Color(0xFFCBD5E1)
-                            )
-                            Text(
-                                text = "Gradient radial (Legacy)",
-                                fontSize = 10.sp,
-                                color = if (!useHeatmap) Color(0xFF4ADE80) else Color(0xFF94A3B8)
-                            )
-                        }
-                    }
-                }
             }
 
             // ── Section: Offline SRTM Terrain Relief ─────────────────────────
@@ -3155,9 +3024,9 @@ fun GlideSettingsBottomSheet(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("🗺️", fontSize = 16.sp)
+                            Text("📥", fontSize = 16.sp)
                             Text(
-                                text = "Sélectionner des zones sur la carte (Multi-zones)",
+                                text = "Sélectionner les reliefs sur la carte (Multi-zones)",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White

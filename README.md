@@ -51,7 +51,9 @@ VarioAppli/
 │       │   ├── MapScreen.kt                  # OSMDroid map, glider, trails
 │       │   ├── ObstacleRoutingEngine.kt      # Terrain/airspace hazard engine
 │       │   ├── TerrainElevationProvider.kt   # AGL elevation & LRU cache
-│       │   ├── GlideOverlay.kt               # Conical glide reach calculation
+│       │   ├── ReachabilityEngine.kt         # SpotAir-style terrain reachability raster
+│       │   ├── ReachabilityHeatmapOverlay.kt # High-performance pixelated map overlay
+│       │   ├── GlideOverlay.kt               # Wing glide settings & reach persistence
 │       │   ├── GpxTrackManager.kt            # GPX track recording & export
 │       │   └── DebugModal.kt                 # Diagnostic engineering modal
 │       └── test/java/com/vario/app/          # Unit test suites & alloc checks
