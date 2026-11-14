@@ -148,7 +148,10 @@ object ActivityStatsCalculator {
             when (phase) {
                 "HIKING" -> {
                     hikeDurSec += dtSec
-                    hikeDistM += distM
+                    val isStationaryJitter = distM < 2.0f && curr.speedKmh < 0.9f && prev.speedKmh < 0.9f
+                    if (!isStationaryJitter) {
+                        hikeDistM += distM
+                    }
                     hikeTracker.update(curr.altitudeM)
                 }
                 "FLYING" -> {

@@ -271,9 +271,9 @@ VarioAppli includes a modern multi-sport activity selector supporting:
 - Tap the button when starting your ascent on foot, skis, or snowshoes.
 - **Automatic Waypoint:** An initial waypoint **"Départ Rando"** is marked at your starting position with current altitude.
 - **Muted Variometer:** Audio beeping is automatically silenced so you don't get false climb/sink chirps while walking.
-- **Dual Elevation Changes (▲ D ± ▼ 🥾):** The central altitude badge displays both cumulative ascent ($D^+$) and descent ($D^-$) side by side in meters.
+- **Dual Elevation Changes (▲ D ± ▼ 🥾):** The central altitude badge displays both cumulative ascent ($D^+$) and descent ($D^-$) side by side in meters. In GPS-only mode, a zero-allocation Schmitt-trigger hysteresis filter ($2.5\text{ m}$ deadband) and pedestrian Kalman filter strictly eliminate false elevation accumulation from stationary sensor noise or step bounce.
 - **Average Pace (Allure moy.):** Cloudbase (irrelevant during ground hike) is replaced by your real-time average walking pace formatted in minutes/km (e.g. `12'45" min/km`).
-- **Distance from Start (Dist. départ):** Displays ground distance covered directly from your hike departure point.
+- **Distance from Start & Total Odometer:** Displays ground distance covered directly from your hike departure point (`Dist. départ`) and total distance along the trail (`Dist. totale`). An anchored displacement deadband ($2.0\text{ m}$) and Doppler speed gating prevent stationary GPS drift from accumulating phantom distance when paused or moving slowly uphill ($0.5\text{ m/s}$).
 - Continuous GPX recording logs your exact hiking trail tagged with hiking phase metadata.
 
 ### 3. Transitioning to Flight Mode (Passage au Vol) & Pause

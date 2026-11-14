@@ -319,6 +319,62 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
         }
 
         /**
+         * Accumulates distance with GPS stationary noise deadband, Doppler ground speed gating,
+         * and multipath spike rejection for pedestrian and GPS-only tracking (hiking, running, ski touring).
+         *
+         * Eliminates stationary odometer drift where stationary ±1-4m GPS multipath noise
+         * falsely accumulates kilometers of phantom distance.
+         *
+         * @param currentTotalM Current cumulative distance in meters.
+         * @param anchorLoc Last committed reference anchor location.
+         * @param newLoc Newly received GPS location.
+         * @param minDisplacementM Minimum displacement in meters required to commit movement (default 2.0m).
+         * @param maxAccuracyM Accuracy threshold in meters; fixes with accuracy worse than this are rejected (default 30.0m).
+         * @param minSpeedMs Doppler speed threshold in m/s below which the user is considered stationary (default 0.25 m/s ≈ 0.9 km/h).
+         * @param maxPhysicalSpeedMs Maximum plausible pedestrian/sport speed in m/s (default 30.0 m/s = 108 km/h).
+         * @return Pair containing the updated cumulative distance and the updated anchor Location.
+         */
+        fun accumulatePedestrianDistance(
+            currentTotalM: Float,
+            anchorLoc: Location?,
+            newLoc: Location,
+            minDisplacementM: Float = 2.0f,
+            maxAccuracyM: Float = 30.0f,
+            minSpeedMs: Float = 0.25f,
+            maxPhysicalSpeedMs: Float = 30.0f
+        ): Pair<Float, Location?> {
+            if (anchorLoc == null) {
+                return Pair(currentTotalM, newLoc)
+            }
+            val hasAcc = try { newLoc.hasAccuracy() && newLoc.accuracy > maxAccuracyM } catch (_: Throwable) { false }
+            if (hasAcc) {
+                return Pair(currentTotalM, anchorLoc)
+            }
+            val isDopplerStationary = try { newLoc.hasSpeed() && newLoc.speed < minSpeedMs } catch (_: Throwable) { false }
+            val disp = anchorLoc.distanceTo(newLoc)
+            val dtSec = try {
+                if (newLoc.time > 0L && anchorLoc.time > 0L) {
+                    ((newLoc.time - anchorLoc.time) / 1000f).coerceAtLeast(0.1f)
+                } else {
+                    1.0f
+                }
+            } catch (_: Throwable) {
+                1.0f
+            }
+            if (disp / dtSec > maxPhysicalSpeedMs) {
+                return Pair(currentTotalM, anchorLoc)
+            }
+            val isConfirmedMoving = try { newLoc.hasSpeed() && newLoc.speed >= 0.8f } catch (_: Throwable) { false }
+            val isDisplaced = disp >= minDisplacementM && !isDopplerStationary
+
+            return if (isConfirmedMoving || isDisplaced) {
+                Pair(currentTotalM + disp, newLoc)
+            } else {
+                Pair(currentTotalM, anchorLoc)
+            }
+        }
+
+        /**
          * Computes distance to takeoff during active flight, or retains the current value when flight is ended/inactive.
          */
         fun computeDistanceToTakeoff(
@@ -592,6 +648,10 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
     private var lastFlightElevationAltM: Float = 0f
     private var hikeStartAltitudeM: Float = 0f
 
+    val sessionElevationTracker = ElevationHysteresisTracker(hysteresisThresholdM = 2.5f)
+    val flightElevationTracker = ElevationHysteresisTracker(hysteresisThresholdM = 2.5f)
+    private var distanceAnchorLocation: Location? = null
+
     private var currentBaudRate: Int = 115200
     private var totalBytesRead: Long = 0L
     private val usbReadBuffer = ByteArray(USB_READ_BUFFER_SIZE)
@@ -647,6 +707,53 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
             if (currentVz > flightMaxClimbRateMs) {
                 flightMaxClimbRateMs = currentVz
             }
+        }
+    }
+
+    /**
+     * Updates cumulative distance with noise deadband, Doppler speed gating, and multipath glitch protection.
+     * ZERO HEAP ALLOCATIONS.
+     * @return true if movement was confirmed and anchor advanced, false if stationary/jitter.
+     */
+    private fun updatePedestrianDistance(
+        newLoc: Location,
+        minDisplacementM: Float = 2.0f,
+        maxAccuracyM: Float = 30.0f,
+        minSpeedMs: Float = 0.25f,
+        maxPhysicalSpeedMs: Float = 30.0f
+    ): Boolean {
+        val anchor = distanceAnchorLocation
+        if (anchor == null) {
+            distanceAnchorLocation = newLoc
+            return false
+        }
+        val hasAcc = try { newLoc.hasAccuracy() && newLoc.accuracy > maxAccuracyM } catch (_: Throwable) { false }
+        if (hasAcc) {
+            return false
+        }
+        val isDopplerStationary = try { newLoc.hasSpeed() && newLoc.speed < minSpeedMs } catch (_: Throwable) { false }
+        val disp = anchor.distanceTo(newLoc)
+        val dtSec = try {
+            if (newLoc.time > 0L && anchor.time > 0L) {
+                ((newLoc.time - anchor.time) / 1000f).coerceAtLeast(0.1f)
+            } else {
+                1.0f
+            }
+        } catch (_: Throwable) {
+            1.0f
+        }
+        if (disp / dtSec > maxPhysicalSpeedMs) {
+            return false
+        }
+        val isConfirmedMoving = try { newLoc.hasSpeed() && newLoc.speed >= 0.8f } catch (_: Throwable) { false }
+        val isDisplaced = disp >= minDisplacementM && !isDopplerStationary
+
+        return if (isConfirmedMoving || isDisplaced) {
+            totalDistanceTraveledM += disp
+            distanceAnchorLocation = newLoc
+            true
+        } else {
+            false
         }
     }
 
@@ -768,6 +875,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
                 if (sessionPhase == SessionPhase.IDLE) {
                     activityType = newType
                     flightMode = newType.toFlightMode()
+                    updatePipelineConfiguration()
                     _dataFlow.value = _dataFlow.value.copy(
                         activityType = newType,
                         flightMode = flightMode
@@ -782,6 +890,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
                 flightStartTimeMs = System.currentTimeMillis()
                 totalDistanceTraveledM = 0f
                 takeoffLocation = lastKnownLocation
+                distanceAnchorLocation = lastKnownLocation
                 GpxTrackManager.clearCurrentTrack()
 
                 val currentAlt = sequenceOf(
@@ -798,6 +907,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
                 lastElevationGainAltM = currentAlt
                 lastFlightElevationAltM = if (flightMode == FlightMode.NORMAL) currentAlt else 0f
                 hikeStartAltitudeM = currentAlt
+                sessionElevationTracker.reset(currentAlt)
+                flightElevationTracker.reset(if (flightMode == FlightMode.NORMAL) currentAlt else 0f)
 
                 smoothedGpsVz = 0f
                 lastGpsAltitudeM = Double.NaN
@@ -807,6 +918,8 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
                 smoothedBaroVz = 0f
                 lastDiagLogTimeMs = 0L
                 kalmanFilter.reset(currentAlt)
+                altitudePipeline.reset(currentAlt)
+                updatePipelineConfiguration()
 
                 acquireWakeLock()
 
@@ -883,9 +996,14 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
                     val currentLoc = lastKnownLocation
                     val alt = if (_dataFlow.value.altitudeM > 0f) _dataFlow.value.altitudeM else (currentLoc?.altitude?.toFloat() ?: 0f)
                     lastFlightElevationAltM = alt
+                    lastElevationGainAltM = alt
+                    flightElevationTracker.reset(alt)
+                    distanceAnchorLocation = currentLoc
                     smoothedGpsVz = 0f
                     smoothedBaroVz = 0f
                     kalmanFilter.reset(alt)
+                    altitudePipeline.reset(alt)
+                    updatePipelineConfiguration()
                     audioEngine?.isFlightActive = true // Un-mutes and starts variometer audio!
                     if (currentLoc != null) {
                         GpxTrackManager.addWaypoint(
@@ -918,6 +1036,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
                     isFlightPaused = true
                     audioEngine?.isFlightActive = false
                     audioEngine?.currentVz = 0f
+                    altitudePipeline.clampStationary(freezeAltitude = false)
                     _dataFlow.value = _dataFlow.value.copy(
                         isFlightPaused = true,
                         vzMs = 0f
@@ -929,6 +1048,7 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
             ACTION_RESUME_FLIGHT -> {
                 if (isFlightActive && isFlightPaused) {
                     isFlightPaused = false
+                    distanceAnchorLocation = lastKnownLocation
                     if (sessionPhase == SessionPhase.FLYING) {
                         audioEngine?.isFlightActive = true
                     }
@@ -949,6 +1069,10 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
                 smoothedGpsVz = 0f
                 smoothedBaroVz = 0f
                 kalmanFilter.reset(0f)
+                altitudePipeline.reset(0f)
+                distanceAnchorLocation = null
+                sessionElevationTracker.reset(0f)
+                flightElevationTracker.reset(0f)
                 _dataFlow.value = _dataFlow.value.copy(
                     isFlightActive = false,
                     isFlightPaused = false,
@@ -1439,8 +1563,31 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
             )
         }
 
-        // Always update maxAltitudeM
-        maxAltitudeM = maxOf(maxAltitudeM, locAlt)
+        val isBaroFlight = _dataFlow.value.isUsbConnected && sessionPhase == SessionPhase.FLYING
+        val groundSpeedMs = if (loc.hasSpeed()) loc.speed else 0f
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        val dtGpsSec = if (lastGpsTimeMs > 0L) ((nowElapsedMs - lastGpsTimeMs) / 1000.0f).coerceIn(0.1f, 5.0f) else 1.0f
+
+        val effectiveAlt: Float
+        val effectiveGpsVz: Float
+
+        if (!isBaroFlight) {
+            altitudePipeline.processGps(locAlt, dtGpsSec, groundSpeedMs)
+            effectiveAlt = altitudePipeline.filteredAltitudeM
+            effectiveGpsVz = altitudePipeline.filteredVzMs
+            smoothedGpsVz = effectiveGpsVz
+            maxAltitudeM = maxOf(maxAltitudeM, effectiveAlt)
+        } else {
+            effectiveAlt = locAlt
+            if (!lastGpsAltitudeM.isNaN() && lastGpsTimeMs > 0L) {
+                smoothedGpsVz = computeGpsVz(currentGpsAlt, lastGpsAltitudeM, dtGpsSec, smoothedGpsVz)
+            }
+            effectiveGpsVz = smoothedGpsVz
+            maxAltitudeM = maxOf(maxAltitudeM, locAlt)
+        }
+
+        lastGpsAltitudeM = currentGpsAlt
+        lastGpsTimeMs = nowElapsedMs
 
         // Takeoff is established on the first valid GPS fix after service start
         if (takeoffLocation == null) {
@@ -1456,55 +1603,58 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
             DebugLogger.log(TAG, "QNH calibrated from GPS location: $currentQnhPa Pa", DebugLogger.Level.INFO)
         }
 
-        // Accumulate segment distance only when flight is active and not paused
-        totalDistanceTraveledM = accumulateDistanceTraveled(isFlightActive && !isFlightPaused, totalDistanceTraveledM, lastKnownLocation, loc)
-        lastKnownLocation = loc
-
-        val effectiveVz = if (_dataFlow.value.isUsbConnected) _dataFlow.value.vzMs else smoothedGpsVz
         if (isFlightActive && !isFlightPaused) {
-            updateElevationAndStats(locAlt, effectiveVz)
+            val moved = if (!isBaroFlight) {
+                sessionElevationTracker.update(effectiveAlt)
+                elevationGainM = sessionElevationTracker.cumulativeGainM
+                elevationLossM = sessionElevationTracker.cumulativeLossM
+
+                if (sessionPhase == SessionPhase.FLYING) {
+                    flightElevationTracker.update(effectiveAlt)
+                    flightElevationGainM = flightElevationTracker.cumulativeGainM
+                    flightElevationLossM = flightElevationTracker.cumulativeLossM
+                    if (effectiveGpsVz > flightMaxClimbRateMs) {
+                        flightMaxClimbRateMs = effectiveGpsVz
+                    }
+                }
+                updatePedestrianDistance(loc)
+            } else {
+                totalDistanceTraveledM = accumulateDistanceTraveled(true, totalDistanceTraveledM, lastKnownLocation, loc)
+                true
+            }
 
             val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6f else 0f
+            val recordedAlt = if (isBaroFlight) _dataFlow.value.altitudeM else effectiveAlt
+            val effectiveVz = if (isBaroFlight) _dataFlow.value.vzMs else effectiveGpsVz
+            val anchor = distanceAnchorLocation
+            val recordedLat = if (moved || isBaroFlight || anchor == null) loc.latitude else anchor.latitude
+            val recordedLon = if (moved || isBaroFlight || anchor == null) loc.longitude else anchor.longitude
+
             GpxTrackManager.addPoint(
                 TrackPoint(
-                    latitude = loc.latitude,
-                    longitude = loc.longitude,
-                    altitudeM = locAlt,
+                    latitude = recordedLat,
+                    longitude = recordedLon,
+                    altitudeM = recordedAlt,
                     vzMs = effectiveVz,
                     speedKmh = speedKmh,
                     timeMs = System.currentTimeMillis(),
                     phase = sessionPhase.name
                 )
             )
+        } else {
+            if (!isFlightActive && !isBaroFlight) {
+                // Keep trackers synced to current ground altitude before start
+                sessionElevationTracker.reset(effectiveAlt)
+            }
         }
+        lastKnownLocation = loc
 
         val distanceToTakeoff = computeDistanceToTakeoff(isFlightActive, _dataFlow.value.distanceToTakeoffM, loc, takeoffLocation)
-
-        // Compute GPS-derived vertical speed (Vz) using Kalman filter (zero heap allocation)
-        val nowElapsedMs = SystemClock.elapsedRealtime()
-        val dtGpsSec = if (lastGpsTimeMs > 0L) ((nowElapsedMs - lastGpsTimeMs) / 1000.0f).coerceIn(0.1f, 5.0f) else 1.0f
-        if (isFlightActive) {
-            if (!_dataFlow.value.isUsbConnected) {
-                kalmanFilter.predict(dtGpsSec)
-                kalmanFilter.updateGpsAltitude(locAlt)
-                smoothedGpsVz = kalmanFilter.getGatedVz()
-            } else if (!lastGpsAltitudeM.isNaN() && lastGpsTimeMs > 0L) {
-                smoothedGpsVz = computeGpsVz(currentGpsAlt, lastGpsAltitudeM, dtGpsSec, smoothedGpsVz)
-            }
-        } else {
-            smoothedGpsVz = 0f
-            if (!_dataFlow.value.isUsbConnected) {
-                kalmanFilter.reset(locAlt)
-            }
-        }
-        lastGpsAltitudeM = currentGpsAlt
-        lastGpsTimeMs = nowElapsedMs
-
-        val current = _dataFlow.value
-        val newAltitudeM = if (current.altitudeM <= 0f) locAlt else current.altitudeM
-
         val groundAlt = TerrainElevationProvider.getElevation(loc.latitude, loc.longitude)
         currentGroundElevationM = groundAlt
+
+        val current = _dataFlow.value
+        val newAltitudeM = if (current.altitudeM <= 0f) effectiveAlt else current.altitudeM
 
         if (!current.isUsbConnected) {
             val audioVz = if (isFlightActive && !isFlightPaused && sessionPhase == SessionPhase.FLYING) smoothedGpsVz else 0f
@@ -1512,10 +1662,10 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
             audioEngine?.currentVz = audioVz
 
             _dataFlow.value = current.copy(
-                altitudeM = locAlt,
-                estimatedAglM = locAlt - groundAlt,
+                altitudeM = effectiveAlt,
+                estimatedAglM = effectiveAlt - groundAlt,
                 vzMs = audioVz,
-                rawVzMs = kalmanFilter.vz,
+                rawVzMs = altitudePipeline.rawVzMs,
                 filterPreset = kalmanFilter.preset,
                 distanceToTakeoffM = distanceToTakeoff,
                 totalDistanceTraveledM = totalDistanceTraveledM,
@@ -1541,9 +1691,10 @@ class VarioService : Service(), Lk8ex1Parser.Listener, SensorEventListener {
                 isGpsAvailable = true
             )
         } else {
+            val altForFlow = if (sessionPhase == SessionPhase.HIKING) effectiveAlt else newAltitudeM
             _dataFlow.value = current.copy(
-                altitudeM = newAltitudeM,
-                estimatedAglM = newAltitudeM - groundAlt,
+                altitudeM = altForFlow,
+                estimatedAglM = altForFlow - groundAlt,
                 maxAltitudeM = maxAltitudeM,
                 distanceToTakeoffM = distanceToTakeoff,
                 totalDistanceTraveledM = totalDistanceTraveledM,
